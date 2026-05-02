@@ -9,26 +9,30 @@ const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
 function parseJsonResponse(text: string): { vars_layer: VARSLayer; objection_handling: ObjectionHandling[] } | null {
   let cleaned = text.trim();
 
-  // Strip markdown code fences (both ```json and plain ```)
-  cleaned = cleaned.replace(/^```json\s*/m, '').replace(/```\s*$/m, '');
-  cleaned = cleaned.replace(/^```\s*/m, '').replace(/```\s*$/m, '');
+  // Find the first { and last } to extract JSON
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
 
-  // Handle single backticks if present
-  if (cleaned.startsWith('`') && !cleaned.startsWith('``')) {
-    cleaned = cleaned.replace(/^`+/, '').replace(/`+$/, '');
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    console.error(`[Vars] Could not find valid JSON boundaries`);
+    return null;
   }
 
-  // Find JSON object - find first { and last }
-  const jsonStart = cleaned.indexOf('{');
-  const jsonEnd = cleaned.lastIndexOf('}');
-  if (jsonStart >= 0 && jsonEnd > jsonStart) {
-    cleaned = cleaned.slice(jsonStart, jsonEnd + 1);
+  cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+
+  // Count braces to check balance
+  const openBraces = (cleaned.match(/\{/g) || []).length;
+  const closeBraces = (cleaned.match(/\}/g) || []).length;
+
+  if (openBraces !== closeBraces) {
+    console.error(`[Vars] Unbalanced braces: { = ${openBraces}, } = ${closeBraces}`);
+    return null;
   }
 
   try {
     return JSON.parse(cleaned) as { vars_layer: VARSLayer; objection_handling: ObjectionHandling[] };
-  } catch (e) {
-    console.error(`[Vars] JSON parse failed: ${e}`);
+  } catch (e: unknown) {
+    console.error(`[Vars] JSON parse failed: ${(e as Error).message}`);
     return null;
   }
 }
@@ -42,6 +46,15 @@ function constrainObjections(
     counter: validateCitationIntegrity(obj.counter, validCitationIds),
     evidence: validCitationIds.includes(obj.evidence) ? obj.evidence : validCitationIds[0] || "citation-1",
   })).filter(obj => obj.counter.length > 10);
+}
+
+// Strip hallucinated pricing patterns from VARS text
+function sanitizeVarsText(text: string): string {
+  // Remove patterns like "8% capped at $5" or "9% plus $0"
+  return text
+    .replace(/\d+\s*%\s*capped\s*at\s*\$\d+/gi, "[specific pricing not available]")
+    .replace(/\d+\s*percent\s*(plus|\+)\s*\$0/gi, "[specific pricing not available]")
+    .replace(/\$\d+\s*percent/gi, "[specific pricing not available]");
 }
 
 export async function generateVarsAndObjections(
@@ -67,50 +80,39 @@ export async function generateVarsAndObjections(
 
   const citationsList = citations.map((c) => `[${c.id}] ${c.title} (${c.source})`).join("\n");
 
-  const prompt = `You are a BFSI sales strategist. Create VARS positioning and objection handling for a deal against a competitor.
+  const prompt = `Create VARS sales positioning for Blostem vs a competitor.
 
-## Intelligence about competitor
-Summary: ${intelligence.competitor_summary || "General fintech competitor"}
-Positioning: ${intelligence.positioning?.tagline || "Payment processing company"}
-Pricing: ${intelligence.pricing_posture?.model || "unknown"} - ${intelligence.pricing_posture?.entryPrice || "unknown"} (${intelligence.pricing_posture?.opacity || "unknown"})
-Key complaints: ${intelligence.customer_truths?.keyComplaints?.join("; ") || "Various complaints"}
-Positives: ${intelligence.customer_truths?.positives?.join("; ") || "Positive feedback"}
+COMPETITOR INTELLIGENCE:
+- Summary: ${intelligence.competitor_summary || "General fintech competitor"}
+- Positioning: ${intelligence.positioning?.tagline || "Payment processing company"}
+- Pricing: ${intelligence.pricing_posture?.model || "unknown"} - ${intelligence.pricing_posture?.entryPrice || "opaque"} (${intelligence.pricing_posture?.opacity || "unknown"})
+- Complaints: ${intelligence.customer_truths?.keyComplaints?.join("; ") || "Various complaints"}
 
-## Blostem (our company)
-Strengths: ${blostemProfile.strengths.join("; ")}
-Differentiators: ${blostemProfile.differentiators.join("; ")}
+BLOSTEM CONTEXT:
+- Strengths: ${blostemProfile.strengths.join("; ")}
+- Differentiators: ${blostemProfile.differentiators.join("; ")}
 
-## Grounding signals
+IMPORTANT PRICING RULES:
+- Do NOT cite specific percentage fees (e.g., "9%", "8%") unless they appear in a citation
+- Do NOT claim "capped at $X" unless explicitly in source data
+- If competitor pricing is opaque or unclear, say "complex pricing structure" not specific numbers
+
+GROUNDING SIGNALS:
 ${signalsJson.map((s) => `[${s.id}] (${s.normalizedType}): "${s.value}"`).join("\n")}
 
-## Citations
+CITATIONS:
 ${citationsList}
 
-## Instructions
-
-Generate VARS layer (4 statements) and objection handling.
-
-VARS Layer:
-- Validate: Why would a prospect consider this competitor? Base on signals.
-- Acknowledge: What does this competitor do well? Base on signals.
-- Reframe: What tradeoffs or weaknesses exist? Base on signals.
-- Specify: What does Blostem uniquely provide? Use Blostem's strengths.
-
-Objection Handling:
-- Generate 2-3 objection/counter pairs
-- Counter must reference a citation: e.g. [citation-1]
-- Counter must explain Blostem's advantage
-
-Return ONLY a JSON object:
+Generate VARS + objection handling. Return ONLY JSON:
 {
   "vars_layer": {
-    "validate": "statement referencing signals",
-    "acknowledge": "statement referencing signals",
-    "reframe": "statement referencing signals",
-    "specify": "Blostem advantages statement"
+    "validate": "Why prospect considers competitor",
+    "acknowledge": "What competitor does well",
+    "reframe": "Competitor weaknesses/tradeoffs",
+    "specify": "What Blostem provides"
   },
   "objection_handling": [
-    {"objection": "pricing concern", "counter": "counter with [citation-N]", "evidence": "citation-N"}
+    {"objection": "concern", "counter": "response with [citation-N]", "evidence": "citation-N"}
   ]
 }`;
 
@@ -122,11 +124,19 @@ Return ONLY a JSON object:
     temperature: 0.3,
   });
 
-  console.log(`[Vars] LLM response: ${text.slice(0, 300)}...`);
+  console.log(`[Vars] LLM response preview: ${text.slice(0, 150)}...`);
 
   const parsed = parseJsonResponse(text);
 
   if (parsed) {
+    // Sanitize VARS text to remove hallucinated pricing patterns
+    parsed.vars_layer = {
+      validate: sanitizeVarsText(parsed.vars_layer.validate),
+      acknowledge: sanitizeVarsText(parsed.vars_layer.acknowledge),
+      reframe: sanitizeVarsText(parsed.vars_layer.reframe),
+      specify: sanitizeVarsText(parsed.vars_layer.specify),
+    };
+
     parsed.objection_handling = constrainObjections(parsed.objection_handling || [], validCitationIds);
     console.log(`[Vars] Successfully parsed`);
     return parsed;

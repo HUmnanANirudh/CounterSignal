@@ -95,7 +95,7 @@ export async function runPipeline(
 
     callbacks.onStageChange("deriving", "Deriving signals and citation mapping...");
     const { signals, sourceMap } = deriveSignals(preprocessed, citations);
-    const confidence = calculateConfidence(citations.length, signals, citations, debugInfo);
+    const confidence = calculateConfidence(citations.length, signals, citations);
 
     if (confidence.score < 0.3) {
       dataGaps.push("low_confidence_signal");

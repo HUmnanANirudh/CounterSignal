@@ -11,18 +11,37 @@ const SOURCE_WEIGHTS: Record<string, number> = {
   "moneycontrol.com": 0.85,
   "economictimes.indiatimes.com": 0.8,
   "forbesindia.in": 0.85,
+  "livemint.com": 0.8,
+  "dealstreet.in": 0.85,
   // Review platforms
-  "g2.com": 0.9,
-  "capterra.com": 0.9,
-  "trustpilot.com": 0.9,
-  "reddit.com": 0.75,
-  "twitter.com": 0.6,
-  "x.com": 0.6,
-  // Global finance - lower weight to avoid dominance
-  "forbes.com": 0.6,
-  "bloomberg.com": 0.6,
-  "techcrunch.com": 0.65,
-  "npi_bing_com": 0.4,
+  "g2.com": 0.85,
+  "capterra.com": 0.85,
+  "trustpilot.com": 0.85,
+  "reddit.com": 0.7,
+  "twitter.com": 0.55,
+  "x.com": 0.55,
+  // Official/competitor sites
+  "razorpay.com": 0.8,
+  "cashfree.com": 0.8,
+  "paytm.com": 0.75,
+  // Global finance - moderate weight
+  "forbes.com": 0.5,
+  "bloomberg.com": 0.5,
+  "techcrunch.com": 0.55,
+  // Low priority / penalized domains
+  "wsj.com": 0.3,
+  "npi_bing_com": 0.3,
+  // Penalize low-quality geographic and scraped domains
+  ".com.au": 0.25,
+  ".gov.ng": 0.2,
+  ".gov.in": 0.3,
+  "kanoon360.com": 0.2,
+  "buildmvpfast.com": 0.2,
+  "sourcefees.com": 0.2,
+  "lei.bloomberg.com": 0.2,
+  "scribd.com": 0.2,
+  "vault.nimc.gov.ng": 0.2,
+  "ftp.bills.com.au": 0.15,
 };
 
 const MAX_PER_DOMAIN = 3;
@@ -49,9 +68,26 @@ function normalizeDomain(url: string): string {
 function getSourceWeight(url: string): number {
   const normalized = normalizeDomain(url);
   const lower = normalized.toLowerCase();
-  for (const [domain, weight] of Object.entries(SOURCE_WEIGHTS)) {
-    if (lower.includes(domain)) return weight;
+
+  // Check exact match first
+  if (SOURCE_WEIGHTS[lower]) {
+    return SOURCE_WEIGHTS[lower];
   }
+
+  // Check if URL contains any penalized domain patterns
+  for (const [domain, weight] of Object.entries(SOURCE_WEIGHTS)) {
+    if (domain.startsWith(".") && lower.includes(domain)) {
+      return weight;
+    }
+  }
+
+  // Check partial matches for known domains
+  for (const [domain, weight] of Object.entries(SOURCE_WEIGHTS)) {
+    if (lower.includes(domain)) {
+      return weight;
+    }
+  }
+
   return 0.5;
 }
 
@@ -88,11 +124,18 @@ function scoreResult(result: { url: string; title: string; content: string; scor
 function selectDiversifiedResults(
   scored: Array<{ url: string; title: string; content: string; score: number; sourceWeight: number; compositeScore: number }>
 ): Array<{ url: string; title: string; content: string; score: number; sourceWeight: number }> {
+  const MIN_SOURCE_WEIGHT = 0.5;
   const selected: Array<{ url: string; title: string; content: string; score: number; sourceWeight: number }> = [];
   const domainUsage: Record<string, number> = {};
 
   for (const result of scored) {
     const domain = normalizeDomain(result.url);
+
+    // Skip results from very low-weight sources
+    if (result.sourceWeight < MIN_SOURCE_WEIGHT) {
+      continue;
+    }
+
     domainUsage[domain] = (domainUsage[domain] || 0) + 1;
 
     if (domainUsage[domain] <= MAX_PER_DOMAIN) {

@@ -19,38 +19,77 @@ async function fetchFallbackContent(url: string): Promise<string> {
 function parseJsonResponse(text: string): ExtractedData | null {
   let cleaned = text.trim();
 
-  // Strip markdown code fences (both ```json and plain ```)
-  cleaned = cleaned.replace(/^```json\s*/m, '').replace(/```\s*$/m, '');
-  cleaned = cleaned.replace(/^```\s*/m, '').replace(/```\s*$/m, '');
+  // Find the first { and last } to extract JSON
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
 
-  // Handle single backticks if present
-  if (cleaned.startsWith('`') && !cleaned.startsWith('``')) {
-    cleaned = cleaned.replace(/^`+/, '').replace(/`+$/, '');
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    console.error(`[Extract] Could not find valid JSON boundaries`);
+    return null;
   }
 
-  // Find JSON object - find first { and last }
-  const jsonStart = cleaned.indexOf('{');
-  const jsonEnd = cleaned.lastIndexOf('}');
-  if (jsonStart >= 0 && jsonEnd > jsonStart) {
-    cleaned = cleaned.slice(jsonStart, jsonEnd + 1);
+  cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+
+  // Count braces to check balance
+  const openBraces = (cleaned.match(/\{/g) || []).length;
+  const closeBraces = (cleaned.match(/\}/g) || []).length;
+
+  if (openBraces !== closeBraces) {
+    console.error(`[Extract] Unbalanced braces: { = ${openBraces}, } = ${closeBraces}`);
+    return null;
   }
 
   try {
     return JSON.parse(cleaned) as ExtractedData;
-  } catch (e) {
-    console.error(`[Extract] JSON parse failed: ${e}`);
+  } catch (e: unknown) {
+    console.error(`[Extract] JSON parse failed: ${(e as Error).message}`);
     return null;
   }
 }
 
 function validatePricingData(pricing: ExtractedData["pricing_posture"]): ExtractedData["pricing_posture"] {
+  // Reject transaction model with fixed dollar entry price
   if (pricing.model?.toLowerCase().includes("transaction")) {
-    if (pricing.entryPrice && pricing.entryPrice.includes("$")) {
-      console.warn(`[Extract] Invalid pricing: transaction model shouldn't have fixed dollar price: ${pricing.entryPrice}`);
-      return { ...pricing, entryPrice: "Percentage + fixed per-transaction fee" };
+    if (pricing.entryPrice && pricing.entryPrice.includes("$") && !pricing.entryPrice.includes("%")) {
+      console.warn(`[Extract] Invalid pricing: transaction model with fixed dollar price: ${pricing.entryPrice}`);
+      return { ...pricing, entryPrice: "opaque" };
     }
   }
   return pricing;
+}
+
+// Validate extracted data for hallucinations
+function validateExtractedData(data: ExtractedData): ExtractedData {
+  // Check for hallucinated pricing patterns
+  const entryPrice = data.pricing_posture?.entryPrice || "";
+
+  // Pattern: percentage + "capped" together is suspicious for payment gateways
+  if (entryPrice.match(/\d+\s*%.*capped/i) || entryPrice.match(/capped.*\d+\s*%/i)) {
+    console.warn(`[Extract] Suspicious pricing pattern detected: ${entryPrice}`);
+    data.pricing_posture = { ...data.pricing_posture, entryPrice: "opaque", opacity: "opaque" };
+  }
+
+  // Pattern: multiple conflicting $ amounts in entry price
+  const dollarMatches = entryPrice.match(/\$\d+/g);
+  if (dollarMatches && dollarMatches.length > 2) {
+    console.warn(`[Extract] Too many dollar amounts in entryPrice: ${entryPrice}`);
+    data.pricing_posture = { ...data.pricing_posture, entryPrice: "opaque", opacity: "opaque" };
+  }
+
+  // Pattern: "9 percent" or "8 percent" is likely hallucinated for Stripe
+  if (entryPrice.match(/9\s*percent/) || entryPrice.match(/8\s*percent/)) {
+    console.warn(`[Extract] Generic percentage pricing likely hallucinated: ${entryPrice}`);
+    data.pricing_posture = { ...data.pricing_posture, entryPrice: "opaque", opacity: "opaque" };
+  }
+
+  // Reject merged pricing models (transaction + subscription + per-item)
+  const model = data.pricing_posture?.model || "";
+  if (model.includes(",") || (model.includes("transaction") && model.includes("subscription"))) {
+    console.warn(`[Extract] Merged pricing models detected: ${model}`);
+    data.pricing_posture = { ...data.pricing_posture, model: "unknown" };
+  }
+
+  return data;
 }
 
 const EXTRACTION_MAX_RETRIES = 1;
@@ -86,51 +125,31 @@ export async function extract(
   const complaintInfo = preprocessed.complaint_sentences.slice(0, 8).join("\n") || "None found";
   const reviewInfo = preprocessed.review_blocks.slice(0, 5).join("\n") || "None found";
 
-  const prompt = `You are a fintech competitive intelligence analyst. Extract STRICTLY VALIDATED information about "${competitor}".
+  const prompt = `Extract fintech competitor data for "${competitor}". Return ONLY valid JSON.
 
-CRITICAL VALIDATION RULES:
-1. PRICING: Only extract pricing if explicitly stated. If model is "transaction", entryPrice should be percentage-based (e.g., "2.9% + $0.30"), never a fixed dollar amount like "$99/month". If no clear pricing found, set opacity to "opaque".
-2. CATEGORIES: Never merge different pricing categories. Payments pricing, issuing fees, and optional features must be separate. If you cannot distinguish, mark as "opaque".
-3. COMPLAINTS: Only include complaints from ≥2 independent sources (review, news, forum types). Single-source complaints are noise.
-4. HONESTY: If data is insufficient or conflicting, set fields to "limited_data" or "opaque". Do NOT merge conflicting data.
+CRITICAL RULES - VIOLATION = REJECTED OUTPUT:
+1. PRICING MODEL: Must be ONE of: subscription, transaction, freemium, custom, unknown. NOT multiple merged models.
+2. ENTRY PRICE:
+   - For transaction models: must be percentage + fixed fee (e.g., "2.9% + $0.30"). NEVER a fixed dollar amount alone.
+   - If no clear pricing found: set to "opaque". Do NOT guess.
+3. CATEGORIES MUST BE SEPARATE: payments pricing, issuing fees, and subscription plans are DIFFERENT. Never merge them.
+4. INVALID PATTERNS (will cause rejection):
+   - "9%" or "8%" without specific context (Stripe doesn't publish these rates)
+   - Any price with "capped" that includes a percentage (e.g., "8% capped at $5")
+   - Multiple conflicting dollar amounts in entryPrice
 
-Research Data (prioritized by signal type):
-${processedData.raw_content.slice(0, 4000)}
+Data:
+${processedData.raw_content.slice(0, 2000)}
 
-Extracted Pricing Data:
-${pricingInfo}
+Pricing candidates: ${pricingInfo}
+Complaints: ${complaintInfo}
+Reviews: ${reviewInfo}
 
-Extracted Complaints (keep only cross-validated ones):
-${complaintInfo}
+JSON (only one model, one entryPrice):
+{"competitor_summary":"string","positioning":{"tagline":"string","targetSegments":[],"differentiators":[]},"pricing_posture":{"model":"subscription|transaction|freemium|custom|unknown","entryPrice":"string","tiers":[],"opacity":"clear|opaque"},"recent_moves":[],"customer_truths":{"positives":[],"negatives":[],"keyComplaints":[]}}
 
-Extracted Reviews:
-${reviewInfo}
+Return ONLY the JSON object. No markdown, no explanation.`;
 
-Return ONLY a valid JSON object with this structure:
-{
-  "competitor_summary": "2-3 sentence overview based ONLY on the research data",
-  "positioning": {
-    "tagline": "1 sentence value proposition from research",
-    "targetSegments": ["segment1", "segment2"],
-    "differentiators": ["diff1", "diff2"]
-  },
-  "pricing_posture": {
-    "model": "subscription|transaction|freemium|custom|unknown",
-    "entryPrice": "only if clearly and consistently stated, otherwise 'opaque'",
-    "tiers": [],
-    "opacity": "clear|opaque"
-  },
-  "recent_moves": [],
-  "customer_truths": {
-    "positives": ["only if mentioned in review data"],
-    "negatives": ["only if complaint appears in multiple sources"],
-    "keyComplaints": ["only cross-validated complaints (≥2 sources)"]
-  }
-}
-
-IMPORTANT: Be conservative. If pricing is unclear or conflicting, mark as opaque. Do not hallucinate merged pricing.`;
-
-  // Retry loop for extraction
   let lastError: Error | null = null;
   for (let attempt = 0; attempt <= EXTRACTION_MAX_RETRIES; attempt++) {
     if (attempt > 0) {
@@ -142,28 +161,30 @@ IMPORTANT: Be conservative. If pricing is unclear or conflicting, mark as opaque
     const { text } = await generateText({
       model,
       prompt,
-      temperature: 0.1,
-      maxOutputTokens: 4096,
+      temperature: 0.05, // Lower temperature for more deterministic output
+      maxOutputTokens: 8192,
     });
 
-    console.log(`[Extract] LLM response preview: ${text.slice(0, 200)}...`);
+    console.log(`[Extract] LLM response preview: ${text.slice(0, 150)}...`);
 
     const parsed = parseJsonResponse(text);
 
     if (parsed) {
-      parsed.pricing_posture = validatePricingData(parsed.pricing_posture);
+      // Validate and sanitize pricing
+      const validated = validateExtractedData(parsed);
+      const finalPricing = validatePricingData(validated.pricing_posture);
+      validated.pricing_posture = finalPricing;
 
-      const complaintCount = parsed.customer_truths?.keyComplaints?.length || 0;
-      console.log(`[Extract] Extracted ${complaintCount} complaints, ${parsed.customer_truths?.positives?.length || 0} positives`);
+      const complaintCount = validated.customer_truths?.keyComplaints?.length || 0;
+      console.log(`[Extract] Extracted ${complaintCount} complaints`);
 
-      return parsed;
+      return validated;
     }
 
     lastError = new Error(`JSON parse failed after ${attempt + 1} attempt(s)`);
     console.error(`[Extract] Attempt ${attempt + 1} failed`);
   }
 
-  // All retries exhausted - throw error to abort pipeline
   console.error(`[Extract] FAILED after ${EXTRACTION_MAX_RETRIES + 1} attempts. Aborting pipeline.`);
   throw lastError;
 }
