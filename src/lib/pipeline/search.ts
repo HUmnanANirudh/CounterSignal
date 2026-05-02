@@ -262,21 +262,21 @@ function selectDiversifiedResults(
 
 export function buildSearchQueries(competitor: string): string[] {
   return [
-    // Pricing from official and review sites
-    `site:razorpay.com OR site:cashfree.com OR site:paytm.com ${competitor} pricing fees`,
-    `site:g2.com OR site:capterra.com OR site:trustpilot.com ${competitor} pricing`,
-    `site:inc42.com OR site:medianama.com OR site:entrackr.com ${competitor} pricing`,
+    // Phase 1: Official/primary source - just company name in quotes, Google returns official site first
+    `"${competitor}" official site`,
+    `introducing "${competitor}"`,
+    `"${competitor}" company overview pricing product`,
 
-    // Reviews
-    `site:reddit.com/r/India OR site:twitter.com ${competitor} review complaint`,
-    `${competitor} customer review site:trustpilot.com`,
+    // Phase 2: Review platforms
+    `site:g2.com OR site:capterra.com OR site:trustpilot.com "${competitor}" review rating`,
+    `site:reddit.com/r/India OR site:twitter.com "${competitor}" review complaint`,
 
-    // News and analysis
-    `${competitor} india fintech news funding`,
-    `site:inc42.com OR site:medianama.com OR site:moneycontrol.com ${competitor} news`,
+    // Phase 3: Startup media
+    `site:inc42.com OR site:medianama.com OR site:entrackr.com "${competitor}" news analysis`,
+    `site:moneycontrol.com OR site:bloomberg.com "${competitor}" news funding`,
 
-    // Documents
-    `(${competitor} OR ${competitor} india) filetype:pdf documentation`,
+    // Phase 4: General overview
+    `"${competitor}" india fintech overview`,
   ];
 }
 
