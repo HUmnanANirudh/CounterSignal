@@ -16,6 +16,7 @@ export interface PipelineCallbacks {
 const cache = new Map<string, { battlecard: Battlecard; timestamp: number }>();
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 const RECENT_DAYS = 180;
+const MIN_DOMAINS = 2;
 
 function getCached(competitor: string): Battlecard | null {
   const cached = cache.get(competitor);
@@ -59,24 +60,46 @@ export async function runPipeline(
   }
 
   const startTime = Date.now();
+  const dataGaps: string[] = [];
 
   try {
     callbacks.onStageChange("searching", `Researching ${competitor}...`);
-    const { citations, rawContent } = await search(competitor);
+    const searchResult = await search(competitor);
+    const { citations, rawContent, debugInfo } = searchResult;
 
     if (citations.length === 0) {
       throw new Error("Insufficient search results. Try a more specific competitor name.");
     }
 
-    callbacks.onStageChange("searching", `Found ${citations.length} sources, preprocessing...`);
+    if (debugInfo && debugInfo.domainCount < MIN_DOMAINS) {
+      console.warn(`[Pipeline] Low domain diversity (${debugInfo.domainCount} domains). Results may be biased.`);
+      dataGaps.push(`limited_source_diversity`);
+    }
+
+    if (debugInfo) {
+      console.log(`[Pipeline] Domain breakdown: ${JSON.stringify(debugInfo.sourcesByDomain)}`);
+    }
+
+    callbacks.onStageChange("searching", `Found ${citations.length} sources from ${debugInfo?.domainCount || 1} domains, preprocessing...`);
     const preprocessed = preprocess(rawContent);
+
+    if (preprocessed.pricing_candidates.length === 0) {
+      dataGaps.push("pricing_not_found");
+    }
+    if (preprocessed.complaint_sentences.length === 0) {
+      dataGaps.push("complaints_not_found");
+    }
 
     callbacks.onStageChange("extracting", "Extracting structured intelligence...");
     const extracted = await extract(preprocessed, competitor, citations);
 
     callbacks.onStageChange("deriving", "Deriving signals and citation mapping...");
     const { signals, sourceMap } = deriveSignals(preprocessed, citations);
-    const confidence = calculateConfidence(citations.length, signals, citations);
+    const confidence = calculateConfidence(citations.length, signals, citations, debugInfo);
+
+    if (confidence.score < 0.3) {
+      dataGaps.push("low_confidence_signal");
+    }
 
     callbacks.onStageChange("vars", "Generating VARS positioning and objection handling...");
     const { vars_layer, objection_handling } = await generateVarsAndObjections(
@@ -101,9 +124,9 @@ export async function runPipeline(
       VARS_layer: vars_layer,
       objection_handling,
       sourceMap,
-      citations: citations.slice(0, 6),
+      citations: citations.slice(0, 8),
       confidence,
-      dataGaps: [],
+      dataGaps,
     };
 
     setCache(competitor, battlecard);

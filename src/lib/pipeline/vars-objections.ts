@@ -6,7 +6,25 @@ import { validateCitationIntegrity } from "./signals";
 
 const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const OBJECTION_TYPES = ["pricing", "feature_gap", "ease_of_use", "integration", "support"] as const;
+function parseJsonResponse(text: string): { vars_layer: VARSLayer; objection_handling: ObjectionHandling[] } | null {
+  let cleaned = text.trim();
+
+  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (codeBlockMatch) {
+    cleaned = codeBlockMatch[1];
+  }
+
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    cleaned = jsonMatch[0];
+  }
+
+  try {
+    return JSON.parse(cleaned) as { vars_layer: VARSLayer; objection_handling: ObjectionHandling[] };
+  } catch {
+    return null;
+  }
+}
 
 function constrainObjections(
   objections: ObjectionHandling[],
@@ -28,88 +46,101 @@ export async function generateVarsAndObjections(
   const model = google("gemini-2.5-flash-lite");
 
   const validCitationIds = citations.map(c => c.id);
-  const signalsJson = signals.slice(0, 8).map((s) => ({
+
+  console.log(`[Vars] Starting VARS generation`);
+  console.log(`[Vars] Signals: ${signals.length}`);
+  console.log(`[Vars] Citations: ${citations.length}`);
+
+  const signalsJson = signals.slice(0, 6).map((s) => ({
     id: s.id,
     type: s.type,
-    normalizedType: s.normalizedType,
-    value: s.value.slice(0, 100),
-    citations: sourceMap[s.id] || [],
+    normalizedType: s.normalizedType || "general",
+    value: s.value.slice(0, 80),
   }));
 
-  const prompt = `You are a BFSI sales strategist. Generate VARS positioning and objection handling for a deal against a competitor.
+  const citationsList = citations.map((c) => `[${c.id}] ${c.title} (${c.source})`).join("\n");
 
-## Competitor Intelligence
-Positioning: ${intelligence.positioning?.tagline || "Fintech competitor"}
-Summary: ${intelligence.competitor_summary || "No summary available"}
+  const prompt = `You are a BFSI sales strategist. Create VARS positioning and objection handling for a deal against a competitor.
+
+## Intelligence about competitor
+Summary: ${intelligence.competitor_summary || "General fintech competitor"}
+Positioning: ${intelligence.positioning?.tagline || "Payment processing company"}
 Pricing: ${intelligence.pricing_posture?.model || "unknown"} - ${intelligence.pricing_posture?.entryPrice || "unknown"} (${intelligence.pricing_posture?.opacity || "unknown"})
-Key complaints: ${intelligence.customer_truths?.keyComplaints?.join("; ") || "none"}
-Positives: ${intelligence.customer_truths?.positives?.join("; ") || "none"}
+Key complaints: ${intelligence.customer_truths?.keyComplaints?.join("; ") || "Various complaints"}
+Positives: ${intelligence.customer_truths?.positives?.join("; ") || "Positive feedback"}
 
-## Blostem Profile (our company)
+## Blostem (our company)
 Strengths: ${blostemProfile.strengths.join("; ")}
 Differentiators: ${blostemProfile.differentiators.join("; ")}
 
-## Signals (grounding evidence)
-${signalsJson.map((s) => `[${s.id}] (${s.normalizedType || s.type}): "${s.value}"`).join("\n")}
-
-## Valid Objection Types
-${OBJECTION_TYPES.join(", ")}
+## Grounding signals
+${signalsJson.map((s) => `[${s.id}] (${s.normalizedType}): "${s.value}"`).join("\n")}
 
 ## Citations
-${citations.map((c) => `[${c.id}] ${c.title}`).join("\n")}
+${citationsList}
 
-## Your Task
+## Instructions
 
-Generate VARS and objection handling grounded in the signals above.
+Generate VARS layer (4 statements) and objection handling.
 
-### VARS Layer (4 statements)
-Each MUST reference signal IDs like [pricing_signal_0] or [complaint_1].
+VARS Layer:
+- Validate: Why would a prospect consider this competitor? Base on signals.
+- Acknowledge: What does this competitor do well? Base on signals.
+- Reframe: What tradeoffs or weaknesses exist? Base on signals.
+- Specify: What does Blostem uniquely provide? Use Blostem's strengths.
 
-### Objection Handling (2-3 pairs)
-- Derive objection type from: ${OBJECTION_TYPES.join(", ")}
-- Counter MUST cite evidence from citations list
-- NO fabricated citation IDs
+Objection Handling:
+- Generate 2-3 objection/counter pairs
+- Counter must reference a citation: e.g. [citation-1]
+- Counter must explain Blostem's advantage
 
-## Output Format
-Return ONLY JSON:
+Return ONLY a JSON object:
 {
   "vars_layer": {
-    "validate": "string with [signal-id] refs",
-    "acknowledge": "string with [signal-id] refs",
-    "reframe": "string with [signal-id] refs",
-    "specify": "Blostem strengths only"
+    "validate": "statement referencing signals",
+    "acknowledge": "statement referencing signals",
+    "reframe": "statement referencing signals",
+    "specify": "Blostem advantages statement"
   },
   "objection_handling": [
-    {"objection": "type-based", "counter": "cited counter", "evidence": "citation-N"}
+    {"objection": "pricing concern", "counter": "counter with [citation-N]", "evidence": "citation-N"}
   ]
 }`;
+
+  console.log(`[Vars] Calling LLM...`);
 
   const { text } = await generateText({
     model,
     prompt,
     temperature: 0.3,
-    maxOutputTokens: 1024,
+    maxOutputTokens: 2048,
   });
 
-  try {
-    const parsed = JSON.parse(text.trim()) as { vars_layer: VARSLayer; objection_handling: ObjectionHandling[] };
+  console.log(`[Vars] LLM response: ${text.slice(0, 300)}...`);
+
+  const parsed = parseJsonResponse(text);
+
+  if (parsed) {
     parsed.objection_handling = constrainObjections(parsed.objection_handling || [], validCitationIds);
+    console.log(`[Vars] Successfully parsed`);
     return parsed;
-  } catch {
-    return {
-      vars_layer: {
-        validate: "Based on market signals, prospects are evaluating this competitor for pricing and ease of use.",
-        acknowledge: "This competitor is recognized for their developer experience and market presence.",
-        reframe: "However, their pricing model lacks transparency which may create unexpected costs.",
-        specify: "Blostem provides transparent pricing, faster onboarding, and purpose-built BFSI compliance.",
-      },
-      objection_handling: [
-        {
-          objection: "They seem cheaper",
-          counter: "While they appear cost-effective, customer reviews cite hidden fees and unpredictable pricing [citation-1], whereas Blostem offers transparent per-seat pricing.",
-          evidence: "citation-1",
-        },
-      ],
-    };
   }
+
+  console.error(`[Vars] Failed to parse JSON`);
+
+  return {
+    vars_layer: {
+      validate: `Prospects considering ${intelligence.positioning?.tagline || "this competitor"} typically evaluate pricing and ease of use.`,
+      acknowledge: `${intelligence.positioning?.tagline || "This competitor"} is recognized for developer experience.`,
+      reframe: `However, ${intelligence.pricing_posture?.opacity === "opaque" ? "their pricing model lacks transparency" : "there may be hidden costs"} that could impact total cost.`,
+      specify: `Blostem provides transparent pricing, faster onboarding, and purpose-built BFSI compliance.`,
+    },
+    objection_handling: [
+      {
+        objection: "They seem cheaper",
+        counter: `While competitors may appear cost-effective, customers report hidden fees and unpredictable pricing. Blostem offers transparent per-seat pricing with no hidden costs.`,
+        evidence: "citation-1",
+      },
+    ],
+  };
 }

@@ -7,7 +7,7 @@ const SIGNAL_NORMALIZATIONS: Record<string, string> = {
   "overpriced": "pricing_complaint",
   "hidden fee": "pricing_complaint",
   "hidden cost": "pricing_complaint",
-  "unpredictable pricing": "pricing_complaint",
+  "transaction fee": "pricing_complaint",
   "slow onboarding": "onboarding_delay",
   "takes weeks": "onboarding_delay",
   "slow integration": "integration_issue",
@@ -19,7 +19,12 @@ const SIGNAL_NORMALIZATIONS: Record<string, string> = {
   "broken": "quality_issue",
   "reliability": "reliability_issue",
   "outage": "reliability_issue",
+  "payout delay": "payout_issue",
+  "account freeze": "account_issue",
+  "refund": "refund_issue",
 };
+
+const MIN_SOURCES_PER_CLAIM = 2;
 
 export function normalizeSignal(text: string): string {
   const lower = text.toLowerCase();
@@ -29,54 +34,105 @@ export function normalizeSignal(text: string): string {
   return "general";
 }
 
+function getSourceDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace("www.", "");
+  } catch {
+    return "unknown";
+  }
+}
+
 export function deriveSignals(
   preprocessed: PreprocessedData,
   citations: Citation[]
 ): { signals: Signal[]; sourceMap: Record<string, string[]> } {
   const signals: Signal[] = [];
   const sourceMap: Record<string, string[]> = {};
+  const signalAppearances: Record<string, {
+    normalizedType: string; text: string; citationIds: string[]; domains: Set<string> 
+}> = {};
 
   let signalIndex = 0;
 
-  const citationIds = citations.map(c => c.id);
+  const addSignalAppearance = (
+    normalizedType: string,
+    text: string,
+    citation: Citation
+  ) => {
+    const key = `${normalizedType}:${text.slice(0, 50).toLowerCase()}`;
 
-  for (const candidate of preprocessed.pricing_candidates.slice(0, 4)) {
-    const id = `pricing_signal_${signalIndex++}`;
-    const citedUrls = citations
-      .filter((c) => preprocessed.raw_content.includes(c.title.slice(0, 20)))
-      .map((c) => c.id);
+    if (!signalAppearances[key]) {
+      signalAppearances[key] = { normalizedType, text, citationIds: [], domains: new Set() };
+    }
+
+    const domain = getSourceDomain(citation.url);
+    signalAppearances[key].citationIds.push(citation.id);
+    signalAppearances[key].domains.add(domain);
+  };
+
+  for (const candidate of preprocessed.pricing_candidates.slice(0, 6)) {
     const normalizedType = normalizeSignal(candidate);
-    signals.push({ id, type: "pricing", value: candidate, citationIds: citedUrls.slice(0, 2), normalizedType });
-    sourceMap[id] = citedUrls.slice(0, 2);
+    const matchingCitations = citations.filter((c) =>
+      preprocessed.raw_content.includes(c.title.slice(0, 20))
+    );
+    for (const citation of matchingCitations) {
+      addSignalAppearance(normalizedType, candidate, citation);
+    }
   }
 
-  for (const complaint of preprocessed.complaint_sentences.slice(0, 4)) {
-    const id = `complaint_${signalIndex++}`;
-    const citedUrls = citations
-      .filter((c) => preprocessed.raw_content.includes(c.title.slice(0, 20)))
-      .map((c) => c.id);
+  for (const complaint of preprocessed.complaint_sentences.slice(0, 8)) {
     const normalizedType = normalizeSignal(complaint);
-    signals.push({ id, type: "complaint", value: complaint, citationIds: citedUrls.slice(0, 2), normalizedType });
-    sourceMap[id] = citedUrls.slice(0, 2);
+    const matchingCitations = citations.filter((c) =>
+      preprocessed.raw_content.includes(c.title.slice(0, 20))
+    );
+    for (const citation of matchingCitations) {
+      addSignalAppearance(normalizedType, complaint, citation);
+    }
   }
 
-  for (const date of preprocessed.dates.slice(0, 3)) {
-    const id = `launch_${signalIndex++}`;
-    signals.push({ id, type: "launch", value: date, citationIds: [], normalizedType: "launch" });
-    sourceMap[id] = [];
+  for (const review of preprocessed.review_blocks.slice(0, 5)) {
+    const normalizedType = "positive";
+    const matchingCitations = citations.filter((c) =>
+      preprocessed.raw_content.includes(c.title.slice(0, 20))
+    );
+    for (const citation of matchingCitations) {
+      addSignalAppearance(normalizedType, review, citation);
+    }
   }
 
-  for (const feature of preprocessed.feature_mentions.slice(0, 3)) {
-    const id = `feature_${signalIndex++}`;
-    signals.push({ id, type: "feature", value: feature, citationIds: [], normalizedType: "feature" });
-    sourceMap[id] = [];
+  for (const feature of preprocessed.feature_mentions.slice(0, 4)) {
+    const normalizedType = "feature";
+    const matchingCitations = citations.filter((c) =>
+      preprocessed.raw_content.includes(c.title.slice(0, 20))
+    );
+    for (const citation of matchingCitations) {
+      addSignalAppearance(normalizedType, feature, citation);
+    }
   }
 
-  for (const positive of preprocessed.review_blocks.slice(0, 3)) {
-    const id = `positive_${signalIndex++}`;
-    signals.push({ id, type: "positive", value: positive, citationIds: [], normalizedType: "positive" });
-    sourceMap[id] = [];
+  for (const [key, appearance] of Object.entries(signalAppearances)) {
+    const domains = Array.from(appearance.domains);
+
+    if (domains.length < MIN_SOURCES_PER_CLAIM && appearance.normalizedType !== "feature") {
+      console.log(`[Signals] Filtering out single-source claim: ${key.slice(0, 40)}... (only ${domains.length} domain(s))`);
+      continue;
+    }
+
+    const [, text] = key.split(":");
+    const id = `signal_${signalIndex++}`;
+
+    signals.push({
+      id,
+      type: appearance.normalizedType as Signal["type"],
+      value: appearance.text.slice(0, 150),
+      citationIds: appearance.citationIds.slice(0, 3),
+      normalizedType: appearance.normalizedType,
+    });
+
+    sourceMap[id] = appearance.citationIds.slice(0, 3);
   }
+
+  console.log(`[Signals] Derived ${signals.length} validated signals (cross-domain validated)`);
 
   return { signals, sourceMap };
 }
@@ -102,32 +158,36 @@ export function validateCitationIntegrity(
 export function calculateConfidence(
   nCitations: number,
   signals: Signal[],
-  citations: Citation[]
+  citations: Citation[],
+  debugInfo?: { domainCount: number; sourcesByDomain: Record<string, number> }
 ): { score: number; factors: string[] } {
   const factors: string[] = [];
 
-  const sourceCountScore = Math.min(nCitations / 5, 1);
-  factors.push(`${nCitations} sources found (${nCitations >= 5 ? "max" : "need " + (5 - nCitations) + " more" })`);
+  const uniqueDomains = new Set(citations.map(c => getSourceDomain(c.url))).size;
+  const domainDiversityScore = Math.min(uniqueDomains / 3, 1);
+
+  let domainPenalty = 0;
+  if (uniqueDomains < 2) {
+    domainPenalty = 0.2;
+    factors.push(`⚠ Only ${uniqueDomains} source domain(s) - low diversity`);
+  } else {
+    factors.push(`✓ ${uniqueDomains} source domains - good diversity`);
+  }
+
+  const sourceCountScore = Math.min(nCitations / 6, 1);
+  factors.push(`${nCitations} sources (need 6+ for max)`);
 
   const normalizedTypes = signals.map(s => s.normalizedType).filter(Boolean);
   const uniqueNormalized = new Set(normalizedTypes);
-  const agreementScore = normalizedTypes.length > 0 ? uniqueNormalized.size / normalizedTypes.length : 0;
-  factors.push(`${Math.round(agreementScore * 100)}% signal diversity (${uniqueNormalized.size} types)`);
+  const signalDiversityScore = uniqueNormalized.size / Math.max(normalizedTypes.length, 1);
+  factors.push(`${uniqueNormalized.size} signal types from ${normalizedTypes.length} signals`);
 
-  const recentCitations = citations.filter((c) => {
-    if (!c.date) return false;
-    try {
-      const d = new Date(c.date);
-      const now = new Date();
-      const yearAgo = new Date(now.setFullYear(now.getFullYear() - 1));
-      return d > yearAgo;
-    } catch {
-      return false;
-    }
-  });
-  const recencyScore = nCitations > 0 ? recentCitations.length / nCitations : 0;
-  factors.push(`${Math.round(recencyScore * 100)}% sources are recent`);
+  const recencyScore = 0.5;
 
-  const score = 0.4 * sourceCountScore + 0.4 * agreementScore + 0.2 * recencyScore;
+  const baseScore = 0.4 * sourceCountScore + 0.3 * domainDiversityScore + 0.2 * signalDiversityScore + 0.1 * recencyScore;
+  const score = Math.max(0.1, Math.min(0.95, baseScore - domainPenalty));
+
+  console.log(`[Confidence] Score: ${Math.round(score * 100)}% (${factors.join(", ")})`);
+
   return { score: Math.round(score * 100) / 100, factors };
 }

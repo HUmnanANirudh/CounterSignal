@@ -1,33 +1,77 @@
 export const blostemProfile = {
-  icp: ["SMBs", "fintech startups", "mid-market BFSI firms"],
-  pricing_model: "SaaS with transparent per-seat pricing",
-  pricing_philosophy: "No hidden fees, predictable costs",
+  name: "Blostem",
+  description: "Banking infrastructure layer for regulated products (FDs, RDs, credit)",
+
+  icp: [
+    "Wealth apps and brokerages (e.g., Zerodha Coin)",
+    "NBFCs looking to offer FD products",
+    "Fintechs building savings/wealth management",
+    "Apps with existing user base needing banking products",
+  ],
+
+  target_problems: [
+    "Point-to-point bank integrations are slow, brittle, expensive",
+    "Each bank has different APIs, compliance processes, reconciliation",
+    "Maintenance overhead pulls focus from core product",
+  ],
+
+  product: {
+    type: "Banking infrastructure aggregator",
+    offerings: [
+      "FD (Fixed Deposit) booking from multiple banks/NBFCs",
+      "RD (Recurring Deposit) support",
+      "Credit on UPI (in development)",
+      "FD-backed credit cards (in development)",
+    ],
+    how_it_works: "Single standardized API for onboarding, booking, servicing across multiple banks",
+  },
+
   strengths: [
-    "faster onboarding (days not months)",
-    "transparent pricing",
-    "better API reliability (99.99% uptime)",
-    "dedicated BFSI support team",
-    "modern stack / better DX",
+    "Single API for multi-bank FD/RD access (no more point-to-point integrations)",
+    "Standardized onboarding, booking, and servicing flow",
+    "Purpose-built for compliance with regulatory requirements",
+    "Years of experience building this infrastructure",
+    "Partner network of banks and NBFCs",
+    "Co-creation model with partner institutions",
+    "Focus on the unglamorous but critical infra work",
   ],
+
   differentiators: [
-    "2-week onboarding vs industry avg 3-6 months",
-    "No enterprise lock-in contracts",
-    "Purpose-built for BFSI compliance needs",
+    "Payment aggregator equivalent for banking products (vs stitching together bank integrations)",
+    "No need to rebuild the same stack for each bank partnership",
+    "Multi-bank FD access through single integration",
+    "Purpose-built for the Indian wealth/savings market",
+    "Not a bank itself — infrastructure layer, so partners maintain customer relationships",
   ],
-  weaknesses: [
-    "Less brand recognition than incumbents",
-    "Smaller ecosystem / fewer integrations",
+
+  pricing_model: "B2B SaaS / infrastructure pricing (not disclosed publicly)",
+  pricing_philosophy: "Transparent costs, no hidden fees, predictable for partners",
+
+  recent_news: [
+    "Raised investment from Rainmatter (Zerodha's VC arm)",
+    "Zerodha will integrate Blostem to offer FDs on Coin",
+    "Building since 2019+ with founding team of Sandeep, Ravi, Uday, Pankaj",
   ],
+
   avoid_competitor_when: [
-    "Enterprise deal > 500 seats (competitor has volume discounts)",
-    "Requires deep existing ecosystem integrations",
+    "Prospect is a bank wanting to build their own infra",
+    "Prospect needs only a single bank FD (direct integration is fine)",
+    "Enterprise deals requiring heavy customization outside standard FD/RD flows",
   ],
+
   compete_aggressively_when: [
-    "Prospect frustrated with slow onboarding",
-    "Prospect complains about unpredictable pricing",
-    "Prospect values developer experience",
-    "Prospect needs BFSI-specific compliance features",
+    "Prospect is building wealth management platform and tired of point-to-point integrations",
+    "Prospect complains about reconciliation and maintenance overhead",
+    "Prospect wants to offer FDs quickly without building bank integrations",
+    "Prospect values standardization and compliance handles",
   ],
+
+  VARS_context: {
+    validate: "You're considering Blostem to solve the integration complexity that comes with offering banking products like FDs to your users.",
+    acknowledge: "Blostem has proven infrastructure trusted by platforms like Zerodha and backed by Rainmatter.",
+    reframe: "Building point-to-point integrations with each bank is slow, expensive, and distracts from your core product.",
+    specify: "Blostem provides a single API for multi-bank FD access with standardized compliance, so you can launch in weeks not months.",
+  },
 } as const;
 
 export type BlostemProfile = typeof blostemProfile;

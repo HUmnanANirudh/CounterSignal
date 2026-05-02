@@ -64,6 +64,7 @@ export default function Home() {
   const [currentStage, setCurrentStage] = useState<PipelineStage>("idle");
   const [completedStages, setCompletedStages] = useState<PipelineStage[]>([]);
   const [markdown, setMarkdown] = useState("");
+  const [markdownForPdf, setMarkdownForPdf] = useState("");
   const battlecardRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
@@ -80,6 +81,7 @@ export default function Home() {
         }
       }, (content) => {
         setMarkdown((prev) => prev + content);
+        setMarkdownForPdf((prev) => prev + content);
       });
     },
     enabled: false,
@@ -91,45 +93,79 @@ export default function Home() {
     queryClient.removeQueries({ queryKey: ["battlecard"] });
     setCurrentStage("searching");
     setCompletedStages([]);
+    setMarkdown("");
+    setMarkdownForPdf("");
     battlecardQuery.refetch();
   };
 
   const handleDownloadPdf = async () => {
-    if (!battlecardRef.current) return;
+    if (!battlecardQuery.data) return;
 
     try {
-      const { default: html2canvas } = await import("html2canvas");
       const { default: jsPDF } = await import("jspdf");
 
-      const element = battlecardRef.current;
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-        imageTimeout: 0,
-        onclone: (clonedDoc) => {
-          const body = clonedDoc.body;
-          body.style.setProperty("background-color", "#ffffff", "important");
-          body.style.setProperty("color", "#000000", "important");
-          const allElements = clonedDoc.querySelectorAll("*");
-          allElements.forEach((el: Element) => {
-            const htmlEl = el as HTMLElement;
-            htmlEl.style.setProperty("background-color", "transparent", "important");
-            htmlEl.style.setProperty("color", "#000000", "important");
-            const inlineBg = htmlEl.getAttribute("style");
-            if (inlineBg && inlineBg.includes("lab")) {
-              htmlEl.setAttribute("style", inlineBg.replace(/lab\([^)]*\)/g, "#ffffff"));
-            }
-          });
-        },
-      });
-      const imgData = canvas.toDataURL("image/png");
+      const competitor = battlecardQuery.data.competitor;
+      const confidence = Math.round(battlecardQuery.data.confidence.score * 100);
+      const generatedAt = new Date(battlecardQuery.data.generatedAt).toLocaleString();
+      const markdown = markdownForPdf;
+
       const pdf = new jsPDF("p", "mm", "a4");
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`${battlecardQuery.data?.competitor || "battlecard"}-battlecard.pdf`);
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const margin = 15;
+      const contentWidth = pageWidth - margin * 2;
+      let y = margin;
+
+      const addText = (text: string, size: number, isBold: boolean = false) => {
+        pdf.setFontSize(size);
+        pdf.setFont("helvetica", isBold ? "bold" : "normal");
+        const lines = pdf.splitTextToSize(text, contentWidth);
+        lines.forEach((line: string) => {
+          if (y > 270) {
+            pdf.addPage();
+            y = margin;
+          }
+          pdf.text(line, margin, y);
+          y += size * 0.4;
+        });
+      };
+
+      const addHeading = (text: string, size: number) => {
+        y += 3;
+        addText(text, size, true);
+        y += 2;
+      };
+
+      addText(`${competitor} Battlecard`, 18, true);
+      y += 2;
+      addText(`Generated: ${generatedAt} | Confidence: ${confidence}%`, 9);
+      y += 8;
+
+      const lines = markdown.split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          y += 3;
+          continue;
+        }
+        if (trimmed.startsWith("# ")) {
+          addHeading(trimmed.replace("# ", ""), 16);
+        } else if (trimmed.startsWith("## ")) {
+          addHeading(trimmed.replace("## ", ""), 13);
+        } else if (trimmed.startsWith("**") && trimmed.endsWith("**")) {
+          addText(trimmed.replace(/\*\*/g, ""), 10, true);
+        } else if (trimmed.startsWith("- ")) {
+          addText(trimmed, 9);
+        } else {
+          const cleanLine = trimmed
+            .replace(/\*\*/g, "")
+            .replace(/\[(citation-\d+)\]/g, "[$1]")
+            .replace(/\|/g, " ");
+          addText(cleanLine, 9);
+        }
+        y += 1;
+      }
+
+      pdf.save(`${competitor}-battlecard.pdf`);
     } catch (err) {
       console.error("PDF generation failed:", err);
     }
