@@ -9,7 +9,7 @@ export function renderMarkdown(battlecard: Battlecard): string {
   };
 
   let md = `# ${competitor} Battlecard\n\n`;
-  md += `**Generated:** ${new Date(battlecard.generatedAt).toLocaleString()} | **Confidence:** ${Math.round(confidence.score * 100)}%\n\n`;
+  md += `**Type:** ${AE_BATTLECARD.competitor_type?.toUpperCase() || 'BFSI'} | **Confidence:** ${Math.round(confidence.score * 100)}% | **Generated:** ${new Date(battlecard.generatedAt).toLocaleString()}\n\n`;
 
   // Company Overview
   if (AE_BATTLECARD.company_overview) {
@@ -86,6 +86,26 @@ export function renderMarkdown(battlecard: Battlecard): string {
     md += `## Proof Points\n\n`;
     for (const proof of AE_BATTLECARD.proof_points) {
       md += `- ${escape(proof)}\n`;
+    }
+    md += "\n";
+  }
+
+  // Compete Aggressively When
+  if (AE_BATTLECARD.compete_aggressively_when?.length) {
+    md += `## Push Deal When...\n\n`;
+    for (const trigger of AE_BATTLECARD.compete_aggressively_when) {
+      md += `- ${escape(trigger)}\n`;
+    }
+    md += "\n";
+  }
+
+  // Signal Trace (traceability)
+  if (AE_BATTLECARD.signal_trace?.length) {
+    md += `## Signal Trace\n\n`;
+    md += `**Signal → Weapon traceability (show your reasoning)**\n\n`;
+    for (const trace of AE_BATTLECARD.signal_trace) {
+      md += `- "${escape(trace.signal)}"\n`;
+      md += `  → ${escape(trace.weapon)}\n`;
     }
     md += "\n";
   }

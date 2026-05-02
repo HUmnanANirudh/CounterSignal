@@ -1,8 +1,11 @@
 import type { Citation, Signal, ExtractedIntelligence } from "@/types";
 import { blostemProfile } from "@/lib/blostem-profile";
 
+export type CompetitorType = "wallet" | "gateway" | "infra" | "NBFC" | "unknown";
+
 export interface DealPrimitives {
   company_overview: string;
+  competitor_type: CompetitorType;
   quick_dismisses: string[];
   objection_handling: Array<{
     objection: string;
@@ -15,199 +18,327 @@ export interface DealPrimitives {
   landmines: string[];
   FUD_responses: string[];
   proof_points: string[];
+  compete_aggressively_when: string[];
+  signal_trace: Array<{
+    signal: string;
+    weapon: string;
+    type: string;
+  }>;
 }
 
-// Map signal types to deal primitives
-const OBJECTION_MAP: Record<string, string> = {
-  pricing_complaint: "They're cheaper",
-  onboarding_delay: "They onboard faster",
-  integration_issue: "They're easier to integrate",
-  support_issue: "They have better support",
-  quality_issue: "They have better uptime",
-  reliability_issue: "They have better reliability",
-  payout_issue: "They payout faster",
-  account_issue: "They have fewer account issues",
-  refund_issue: "They handle refunds better",
-  general: "They offer better value",
-};
+// Detect competitor type from signals and intelligence
+function detectCompetitorType(competitor: string, signals: Signal[], intelligence: ExtractedIntelligence): CompetitorType {
+  const lower = competitor.toLowerCase();
 
-function extractDealImplication(signal: Signal): string | null {
+  // Wallet indicators
+  if (lower.includes("mobikwik") || lower.includes("paytm") || lower.includes("phonepe")) {
+    return "wallet";
+  }
+
+  // Check signals for wallet-related content (wallet detection handled via competitor name)
+  // Wallet detection happens below via competitor name matching
+
+  // NBFC indicators from signals
+  const nbfcSignals = signals.filter(s =>
+    s.value.toLowerCase().includes("nbfc") ||
+    s.value.toLowerCase().includes("lending") ||
+    s.value.toLowerCase().includes("loan")
+  );
+
+  if (nbfcSignals.length > 0) {
+    return "NBFC";
+  }
+
+  // Gateway indicators
+  const gatewaySignals = signals.filter(s =>
+    s.value.toLowerCase().includes("payment gateway") ||
+    s.value.toLowerCase().includes("merchant") ||
+    s.value.toLowerCase().includes("checkout")
+  );
+
+  if (gatewaySignals.length > 0) {
+    return "gateway";
+  }
+
+  // Check intelligence for type hints
+  const tagline = (intelligence.positioning?.tagline || "").toLowerCase();
+  if (tagline.includes("wallet") || tagline.includes("upi")) return "wallet";
+  if (tagline.includes("gateway") || tagline.includes("merchant")) return "gateway";
+  if (tagline.includes("infrastructure") || tagline.includes("banking")) return "infra";
+
+  return "unknown";
+}
+
+// Expand complaints to include implicit signals
+function isImplicitComplaint(signal: Signal): boolean {
+  const text = (signal.value + " " + (signal.normalizedType || "")).toLowerCase();
+  return text.includes("fraud") ||
+         text.includes("loss") ||
+         text.includes("decline") ||
+         text.includes("regulatory") ||
+         text.includes("ban") ||
+         text.includes("outage") ||
+         text.includes("failure") ||
+         text.includes("risk") ||
+         text.includes("scam") ||
+         text.includes("nbfc") ||
+         text.includes("default") ||
+         text.includes("lawsuit") ||
+         text.includes(" RBI ");
+}
+
+function getImplicitComplaintType(signal: Signal): string | null {
   const text = signal.value.toLowerCase();
 
-  // Pricing complaints → cost implication
-  if (signal.normalizedType === "pricing_complaint") {
-    if (text.includes("fee") || text.includes("charge") || text.includes("cost")) {
-      return "increases effective total cost";
-    }
-    if (text.includes("expensive") || text.includes("overpriced")) {
-      return "overprices for the value";
-    }
+  if (text.includes("fraud") || text.includes("scam") || text.includes("risk") || text.includes("₹")) {
+    return "trust_risk";
   }
-
-  // Onboarding delays → time-to-market implication
-  if (signal.normalizedType === "onboarding_delay") {
-    if (text.includes("week") || text.includes("month")) {
-      return "delays your time-to-market";
-    }
-    if (text.includes("slow") || text.includes("long")) {
-      return "slows down your launch";
-    }
+  if (text.includes("loss") || text.includes("decline") || text.includes("default")) {
+    return "financial_health";
   }
-
-  // Support issues → risk implication
-  if (signal.normalizedType === "support_issue") {
-    if (text.includes("unresponsive") || text.includes("no response")) {
-      return "leaves you stranded when issues arise";
-    }
-    if (text.includes("poor") || text.includes("bad")) {
-      return "compromises your customer experience";
-    }
+  if (text.includes("regulatory") || text.includes("RBI") || text.includes("ban")) {
+    return "regulatory";
   }
-
-  // Integration issues → complexity implication
-  if (signal.normalizedType === "integration_issue") {
-    if (text.includes("difficult") || text.includes("complex")) {
-      return "adds integration complexity";
-    }
-    if (text.includes("broken") || text.includes("bug")) {
-      return "creates technical debt";
-    }
+  if (text.includes("outage") || text.includes("failure") || text.includes("down")) {
+    return "reliability";
+  }
+  if (text.includes("lawsuit") || text.includes("legal") || text.includes("court")) {
+    return "legal";
   }
 
   return null;
 }
 
-function generateQuickDismiss(competitor: string, signals: Signal[]): string {
-  const pricingSignals = signals.filter(s => s.normalizedType === "pricing_complaint");
-  const onboardingSignals = signals.filter(s => s.normalizedType === "onboarding_delay");
-  const supportSignals = signals.filter(s => s.normalizedType === "support_issue");
+// Competitor-specific attack vectors
+function getWalletAttacks(signals: Signal[]): string[] {
+  const attacks: string[] = [];
 
-  // Pick the strongest signal type
-  if (pricingSignals.length > 0) {
-    return `${competitor} may appear cost-effective, but Indian BFSI requirements add compliance and settlement costs that compound — Blostem prices for predictability.`;
-  }
-  if (onboardingSignals.length > 0) {
-    return `${competitor} works for global-first teams — Indian BFSI compliance and multi-bank onboarding typically requires days-to-weeks more time than Blostem.`;
-  }
-  if (supportSignals.length > 0) {
-    return `${competitor} has good global support, but Indian BFSI-specific queries often get routed to delayed tiers — Blostem provides dedicated BFSI expertise.`;
+  const fraudSignal = signals.find(s => s.value.toLowerCase().includes("fraud") || s.value.includes("₹"));
+  if (fraudSignal) {
+    attacks.push(`Trust risk: wallet providers face higher fraud exposure — how are you managing fraud liability?`);
   }
 
-  return `${competitor} is built for global simplicity — Blostem is purpose-built for Indian BFSI compliance and multi-bank complexity.`;
+  const nbfcSignal = signals.find(s => s.value.toLowerCase().includes("nbfc"));
+  if (nbfcSignal) {
+    attacks.push(`NBFC partnerships add regulatory complexity — how does this affect your compliance overhead?`);
+  }
+
+  const mdrSignal = signals.find(s => s.value.toLowerCase().includes("mdr"));
+  if (mdrSignal) {
+    attacks.push(`Wallet MDR + settlement fees compound at scale — infra-layer pricing is typically 40-60% lower`);
+  }
+
+  return attacks;
 }
 
-function generateCounter(
+function getGatewayAttacks(signals: Signal[]): string[] {
+  const attacks: string[] = [];
+
+  const settlementSignal = signals.find(s => s.value.toLowerCase().includes("settlement"));
+  if (settlementSignal) {
+    attacks.push(`Settlement delays impact working capital — T+1 vs same-day affects your cash flow directly`);
+  }
+
+  const pricingSignal = signals.find(s => s.normalizedType === "pricing_complaint");
+  if (pricingSignal) {
+    attacks.push(`Gateway % + per-transaction fees scale unpredictably — Blostem's infra model provides cost predictability`);
+  }
+
+  return attacks;
+}
+
+function getNBFCAttacks(signals: Signal[]): string[] {
+  const attacks: string[] = [];
+
+  const complianceSignal = signals.find(s => s.value.toLowerCase().includes("regulatory") || s.value.toLowerCase().includes("RBI"));
+  if (complianceSignal) {
+    attacks.push(`NBFC regulations require dedicated compliance infrastructure — Blostem handles this natively`);
+  }
+
+  const lendingSignal = signals.find(s => s.value.toLowerCase().includes("lending") || s.value.toLowerCase().includes("loan"));
+  if (lendingSignal) {
+    attacks.push(`Lending products require separate compliance tracks — Blostem's FD/RD infra supports credit-adjacent products`);
+  }
+
+  return attacks;
+}
+
+function generateTypeSpecificDismiss(competitor: string, compType: CompetitorType, signals: Signal[]): string {
+  switch (compType) {
+    case "wallet":
+      const fraudSignal = signals.find(s => s.value.toLowerCase().includes("fraud") || s.value.includes("₹"));
+      if (fraudSignal) {
+        return `${competitor}'s wallet model introduces fraud liability and MDR complexity — Blostem's infra-layer removes this risk.`;
+      }
+      return `${competitor}'s wallet-based model means MDR + settlement layers that compound at scale — Blostem prices for predictability, not transaction volume.`;
+
+    case "gateway":
+      return `${competitor}'s gateway model charges % per transaction + fixed fees — at scale, this becomes your largest variable cost — Blostem's infra model is designed for predictable B2B pricing.`;
+
+    case "NBFC":
+      return `${competitor}'s NBFC model adds regulatory compliance overhead your team absorbs — Blostem handles BFSI compliance natively, so you can focus on product.`;
+
+    case "infra":
+      return `${competitor} addresses integration complexity — but Blostem's single API for multi-bank FD/RD access is purpose-built for Indian wealth platforms.`;
+
+    default:
+      return `${competitor} may solve immediate needs, but Blostem is purpose-built for Indian BFSI compliance and multi-bank complexity.`;
+  }
+}
+
+function generateCounterForSignal(
   signal: Signal,
   competitor: string,
-  citations: Citation[]
+  citations: Citation[],
+  compType: CompetitorType
 ): string {
-  const implication = extractDealImplication(signal);
-  const evidence = signal.citationIds[0]
-    ? citations.find(c => c.id === signal.citationIds[0])?.source || "source"
-    : "Indian BFSI clients report";
-
   const text = signal.value;
+  const citation = signal.citationIds[0];
+  const source = citation ? citations.find(c => c.id === citation)?.source : null;
 
-  if (signal.normalizedType === "pricing_complaint") {
-    return `While ${competitor} appears competitive, ${evidence} report that ${text.toLowerCase()} — Blostem prices for transparency with no hidden compliance fees.`;
-  }
-  if (signal.normalizedType === "onboarding_delay") {
-    return `True for global use cases, but Indian compliance + multi-bank onboarding adds ${text.toLowerCase()} vs Blostem's standardized BFSI flow.`;
-  }
-  if (signal.normalizedType === "support_issue") {
-    return `${text.charAt(0).toUpperCase() + text.slice(1)}. For Indian BFSI, this means routing delays through global support queues — Blostem's BFSI team is local.`;
-  }
-  if (signal.normalizedType === "integration_issue") {
-    return `${text.charAt(0).toUpperCase() + text.slice(1)}. For multi-bank BFSI products, this compounds across each bank partnership — Blostem's single API handles this.`;
+  // Trust/risk signals (highest value AE weapon)
+  if (isImplicitComplaint(signal) && getImplicitComplaintType(signal) === "trust_risk") {
+    return `${text}. This directly impacts your risk posture — Blostem's infra-layer separates your product from fraud liability [${citation || 'source'}].`;
   }
 
-  return `${text.charAt(0).toUpperCase() + text.slice(1)}. In BFSI context, this impacts compliance and time-to-market differently than global markets — Blostem is built for this.`;
+  // Financial health signals
+  if (getImplicitComplaintType(signal) === "financial_health") {
+    return `${text}. This signals product-market fit issues — Blostem is backed by Rainmatter (Zerodha), with proven platform scale [${citation || 'source'}].`;
+  }
+
+  // Regulatory signals
+  if (getImplicitComplaintType(signal) === "regulatory") {
+    return `${text}. For BFSI products, regulatory issues compound — Blostem handles compliance natively, so you avoid ${competitor}'s compliance burden [${citation || 'source'}].`;
+  }
+
+  // Standard complaint types
+  const normalizedType = signal.normalizedType || "general";
+
+  if (normalizedType === "pricing_complaint") {
+    return `${competitor} appears cost-effective, but ${source || 'sources'} report ${text.toLowerCase()} — Blostem prices for transparency with no hidden compliance fees.`;
+  }
+  if (normalizedType === "support_issue") {
+    return `${text.charAt(0).toUpperCase() + text.slice(1)}. For BFSI, this means routing delays through generic support — Blostem's team is BFSI-native [${citation || 'source'}].`;
+  }
+  if (normalizedType === "integration_issue") {
+    return `${text.charAt(0).toUpperCase() + text.slice(1)}. Each bank partnership compounds this — Blostem's single API handles multi-bank complexity [${citation || 'source'}].`;
+  }
+  if (normalizedType === "onboarding_delay") {
+    return `${text.charAt(0).toUpperCase() + text.slice(1)}. BFSI compliance timelines add weeks to this — Blostem's standardized flow is designed for speed [${citation || 'source'}].`;
+  }
+
+  // Generic fallback
+  return `${text.charAt(0).toUpperCase() + text.slice(1)}. In BFSI context, this impacts compliance and time-to-market — Blostem is built specifically for this [${citation || 'source'}].`;
 }
 
-function generateLandmine(signal: Signal): string | null {
-  if (signal.normalizedType === "onboarding_delay") {
-    return "How are you handling compliance and bank onboarding timelines today — what's your current T+1 settlement capability?";
+function generateAggressiveLandmine(signal: Signal, compType: CompetitorType): string | null {
+  const text = signal.value.toLowerCase();
+  const citation = signal.citationIds[0] ? `[${signal.citationIds[0]}]` : "";
+
+  // Trust/risk landmines (Tier-1 AE weapons)
+  if (text.includes("fraud") || text.includes("₹") || text.includes("scam")) {
+    return `How are you handling fraud liability and reconciliation when wallet payouts fail? ${citation}`;
   }
-  if (signal.normalizedType === "pricing_complaint") {
-    return "When you factor in compliance overhead and settlement fees, how does your total cost compare to a unified BFSI infrastructure layer?";
+
+  // Financial health landmines
+  if (text.includes("loss") || text.includes("decline") || text.includes("default")) {
+    return `Given ${signal.value.slice(0, 50)}... how does this affect your confidence in ${signal.normalizedType?.includes("provider") ? "their" : "their"} long-term viability as a partner? ${citation}`;
   }
-  if (signal.normalizedType === "support_issue") {
-    return "Who handles your BFSI-specific compliance questions when they arise — is it the same team as your main integration support?";
+
+  // Regulatory landmines
+  if (text.includes("regulatory") || text.includes("rbi") || text.includes("ban")) {
+    return `How are you managing regulatory compliance for this provider? What's your contingency if they face RBI action? ${citation}`;
   }
-  if (signal.normalizedType === "integration_issue") {
-    return "How are you managing integration maintenance across multiple bank partners? What's your team's bandwidth for bank API changes?";
+
+  // Standard landmines by type
+  if (compType === "wallet") {
+    if (text.includes("mdr") || text.includes("fee")) {
+      return `When you factor in MDR + settlement fees, how does your effective cost per transaction compare to an infra-layer solution?`;
+    }
   }
-  if (signal.normalizedType === "payout_issue") {
-    return "What's your current settlement timeline requirement? How critical is T+0 or same-day settlement for your ops?";
+
+  if (compType === "gateway") {
+    if (text.includes("settlement")) {
+      return `How do you handle settlement failures or disputes? What's your recourse when payouts are delayed?`;
+    }
   }
+
+  // Default landmine for integration/complexity
+  if (text.includes("integration") || text.includes("complex") || text.includes("api")) {
+    return `How are you managing integration maintenance across bank partners? What's your team's bandwidth for API changes?`;
+  }
+
   return null;
 }
 
-function generateWhyWeLose(signals: Signal[]): string[] {
+function generateWhyWeLoseForType(compType: CompetitorType, signals: Signal[]): string[] {
   const reasons: string[] = [];
-  const hasIntegrationSignals = signals.some(s => s.normalizedType === "integration_issue");
-  const hasOnboardingSignals = signals.some(s => s.normalizedType === "onboarding_delay");
-  const pricingSignals = signals.filter(s => s.normalizedType === "pricing_complaint");
 
-  // If competitor has strong integration story, we may lose to them
-  if (!hasIntegrationSignals) {
-    reasons.push("Global-first teams prioritizing ecosystem integrations over BFSI-specific compliance");
-  }
-
-  // If competitor has fast onboarding for global, we lose when prospects don't need Indian compliance
-  if (!hasOnboardingSignals) {
-    reasons.push("Platforms already integrated with major bank networks where point-to-point integration is already solved");
-  }
-
-  // If no pricing complaints found for competitor, they may have clearer pricing
-  if (pricingSignals.length === 0) {
-    reasons.push("Enterprises with existing bank partnerships may prefer predictable contract pricing over Blostem's usage model");
-  }
-
-  // Default loss scenarios
-  if (reasons.length === 0) {
-    reasons.push("Very large enterprises (500+ seats) with dedicated integration teams and existing bank relationships");
-    reasons.push("Prospects prioritizing speed-to-market over long-term maintainability");
-    reasons.push("Platforms already locked into specific bank ecosystems");
+  switch (compType) {
+    case "wallet":
+      reasons.push("Prospects already locked into wallet/upi ecosystem (Paytm, PhonePe)");
+      reasons.push("Projects requiring deep wallet integrations (gift cards, recharges)");
+      break;
+    case "gateway":
+      reasons.push("Merchants already integrated with Razorpay/Cashfree ecosystem");
+      reasons.push("Projects prioritizing gateway familiarity over infra sophistication");
+      break;
+    case "NBFC":
+      reasons.push("Prospects with existing NBFC relationships and compliance teams");
+      reasons.push("Deals where lending product roadmap is more important than banking infra");
+      break;
+    case "infra":
+      reasons.push("Prospects with dedicated integration teams and bank partnerships already in place");
+      reasons.push("Enterprises prioritizing in-house control over third-party abstraction");
+      break;
+    default:
+      reasons.push("Very large enterprises (500+ seats) with existing bank relationships");
+      reasons.push("Prospects prioritizing speed-to-market over long-term maintainability");
   }
 
   return reasons;
 }
 
-function generatePricingPositioning(
-  intelligence: ExtractedIntelligence,
-  signals: Signal[],
-  competitor: string
-): string {
-  const model = intelligence.pricing_posture?.model || "unknown";
-  const opacity = intelligence.pricing_posture?.opacity || "unknown";
+function getCompeteAggressivelyTriggers(compType: CompetitorType, signals: Signal[]): string[] {
+  const triggers: string[] = [];
 
-  if (opacity === "opaque" || model === "unknown") {
-    return `${model === "unknown" ? "Pricing model unclear" : "Complex " + model + " structure"} makes it hard to predict total cost — Blostem offers transparent B2B SaaS pricing with no hidden compliance fees.`;
+  // Universal triggers
+  triggers.push("Prospect complains about reconciliation overhead with multiple bank partners");
+  triggers.push("Prospect is building wealth management or savings product");
+  triggers.push("Risk and compliance is a top priority for the prospect");
+
+  // Type-specific triggers
+  switch (compType) {
+    case "wallet":
+      triggers.push("Prospect concerned about MDR costs and transaction fee opacity");
+      triggers.push("Prospect worried about wallet fraud liability and settlement risk");
+      break;
+    case "gateway":
+      triggers.push("Prospect experiencing settlement delays or payout issues");
+      triggers.push("Prospect frustrated with per-transaction fee scaling");
+      break;
+    case "NBFC":
+      triggers.push("Prospect building FD/RD products and needs regulatory-compliant infra");
+      triggers.push("Prospect frustrated with point-to-point bank integrations for credit products");
+      break;
+    case "infra":
+      triggers.push("Prospect is a fintech startup looking to launch BFSI products quickly");
+      triggers.push("Prospect values developer experience and API simplicity");
+      break;
   }
 
-  if (model === "transaction") {
-    return `${competitor}'s transaction model with ${intelligence.pricing_posture?.entryPrice || "opaque pricing"} adds up with volume — Blostem provides predictable per-transaction pricing without per-bank overhead.`;
-  }
-  if (model === "subscription") {
-    return `${competitor}'s subscription model ${intelligence.pricing_posture?.entryPrice ? "at " + intelligence.pricing_posture.entryPrice : ""} may not scale for multi-bank BFSI — Blostem's model is designed for BFSI infrastructure at scale.`;
-  }
-
-  return `Blostem provides transparent B2B SaaS pricing vs ${competitor}'s ${model} model — designed for Indian BFSI complexity without surprise costs.`;
-}
-
-function generateFUDResponse(signal: Signal, competitor: string): string | null {
-  // Common FUD: "Blostem is new / smaller"
-  if (signal.normalizedType === "quality_issue" || signal.normalizedType === "reliability_issue") {
-    return `Blostem is backed by Rainmatter (Zerodha's VC) with proven multi-bank FD infrastructure — ${competitor} may have global scale but Blostem is built specifically for Indian BFSI compliance.`;
+  // Signal-based triggers
+  const fraudSignal = signals.find(s => s.value.toLowerCase().includes("fraud") || s.value.includes("₹"));
+  if (fraudSignal) {
+    triggers.push("Prospect is risk-averse and concerned about payment reliability");
   }
 
-  // FUD: "Blostem doesn't have as many integrations"
-  if (signal.normalizedType === "integration_issue") {
-    return `${competitor} may have more integrations, but each requires separate compliance and maintenance — Blostem's bank partner network is purpose-built for Indian regulatory requirements.`;
+  const complianceSignal = signals.find(s => s.value.toLowerCase().includes("regulatory") || s.value.toLowerCase().includes("rbi"));
+  if (complianceSignal) {
+    triggers.push("Prospect has had RBI compliance issues with current provider");
   }
 
-  return null;
+  return [...new Set(triggers)].slice(0, 6);
 }
 
 export function deriveDealPrimitives(
@@ -218,103 +349,162 @@ export function deriveDealPrimitives(
 ): DealPrimitives {
   console.log(`[DealPrimitives] Processing ${signals.length} signals for ${competitor}`);
 
-  // Generate objections from complaint signals
-  const complaintSignals = signals.filter(s =>
-    (s.normalizedType || "").includes("complaint") ||
-    (s.normalizedType || "").includes("pricing") ||
-    (s.normalizedType || "").includes("support") ||
-    (s.normalizedType || "").includes("onboarding")
-  );
+  // Detect competitor type
+  const compType = detectCompetitorType(competitor, signals, intelligence);
+  console.log(`[DealPrimitives] Detected competitor type: ${compType}`);
 
-  const objection_handling = complaintSignals.slice(0, 5).map(signal => {
+  // Expand signals with implicit complaints (fraud, regulatory, financial health)
+  const expandedSignals = signals.map(signal => {
+    if (isImplicitComplaint(signal)) {
+      const implicitType = getImplicitComplaintType(signal);
+      console.log(`[DealPrimitives] Implicit complaint: ${signal.value.slice(0, 50)}... → ${implicitType}`);
+    }
+    return signal;
+  });
+
+  // Collect ALL complaint-adjacent signals (including implicit)
+  const allComplaintSignals = signals.filter(s => {
+    const normalized = s.normalizedType || "";
+    const text = s.value.toLowerCase();
+    return normalized.includes("complaint") ||
+           normalized.includes("pricing") ||
+           normalized.includes("support") ||
+           normalized.includes("onboarding") ||
+           normalized.includes("integration") ||
+           isImplicitComplaint(s);
+  });
+
+  // Build signal trace for traceability
+  const signal_trace = allComplaintSignals.slice(0, 5).map(signal => {
+    let weapon = "";
+    if (isImplicitComplaint(signal)) {
+      const type = getImplicitComplaintType(signal);
+      if (type === "trust_risk") weapon = "Objection: 'They seem reliable' → Counter: Trust risk evidence";
+      else if (type === "financial_health") weapon = "Objection: 'They seem stable' → Counter: Financial decline evidence";
+      else if (type === "regulatory") weapon = "Objection: 'They seem compliant' → Counter: Regulatory issue evidence";
+      else weapon = "Objection: 'They seem capable' → Counter: Operational failure evidence";
+    } else if (signal.normalizedType === "pricing_complaint") {
+      weapon = "Objection: 'They're cheaper' → Counter: Hidden costs evidence";
+    } else if (signal.normalizedType === "support_issue") {
+      weapon = "Objection: 'They have better support' → Counter: Support failure evidence";
+    } else if (signal.normalizedType === "integration_issue") {
+      weapon = "Objection: 'They're easier to integrate' → Counter: Complexity evidence";
+    }
+
+    return {
+      signal: signal.value.slice(0, 80),
+      weapon,
+      type: signal.normalizedType || "unknown"
+    };
+  });
+
+  // Generate objection handling (prioritize trust/risk signals)
+  const sortedComplaints = [...allComplaintSignals].sort((a, b) => {
+    const aIsRisk = isImplicitComplaint(a) && getImplicitComplaintType(a) === "trust_risk";
+    const bIsRisk = isImplicitComplaint(b) && getImplicitComplaintType(b) === "trust_risk";
+    if (aIsRisk && !bIsRisk) return -1;
+    if (!aIsRisk && bIsRisk) return 1;
+    return 0;
+  });
+
+  const objection_handling = sortedComplaints.slice(0, 4).map(signal => {
     const normalizedType = signal.normalizedType || "general";
-    const objectionType = OBJECTION_MAP[normalizedType] || OBJECTION_MAP.general;
-    const baseObjection = normalizedType === "pricing_complaint"
-      ? "They seem cheaper"
-      : normalizedType === "onboarding_delay"
-      ? "They onboard faster"
-      : normalizedType === "support_issue"
-      ? "They have better support"
-      : normalizedType === "integration_issue"
-      ? "They're easier to integrate"
-      : `${normalizedType.replace(/_/g, " ")} concerns`;
+
+    let baseObjection = "";
+    if (isImplicitComplaint(signal)) {
+      const type = getImplicitComplaintType(signal);
+      if (type === "trust_risk") baseObjection = "They seem trustworthy";
+      else if (type === "financial_health") baseObjection = "They seem financially stable";
+      else if (type === "regulatory") baseObjection = "They seem compliant";
+      else baseObjection = "They seem reliable";
+    } else if (normalizedType === "pricing_complaint") {
+      baseObjection = "They seem cheaper";
+    } else if (normalizedType === "support_issue") {
+      baseObjection = "They have better support";
+    } else if (normalizedType === "integration_issue") {
+      baseObjection = "They're easier to integrate";
+    } else if (normalizedType === "onboarding_delay") {
+      baseObjection = "They onboard faster";
+    } else {
+      baseObjection = "They seem like a better option";
+    }
 
     return {
       objection: baseObjection,
-      counter: generateCounter(signal, competitor, citations),
+      counter: generateCounterForSignal(signal, competitor, citations, compType),
       evidence: signal.citationIds.slice(0, 2),
     };
   });
 
-  // Generate quick dismisses (1-liners for fast call use)
+  // Quick dismisses (competitor-specific, not template)
   const quick_dismisses = [
-    generateQuickDismiss(competitor, signals),
-    `Built for global scale ≠ built for Indian BFSI complexity — Blostem handles compliance, multi-bank reconciliation, and regulatory changes natively.`,
-    `Point-to-point bank integrations work until you need to change banks — Blostem's abstraction layer future-proofs your banking infrastructure.`,
-  ];
+    generateTypeSpecificDismiss(competitor, compType, signals),
+    ...getWalletAttacks(signals),
+    ...getGatewayAttacks(signals),
+    ...getNBFCAttacks(signals),
+  ].filter((v, i, a) => a.indexOf(v) === i).slice(0, 3);
 
-  // Generate why we win (outcomes, not features)
+  // Why we win (outcome-focused, type-specific)
   const whyWeWin = [
     `Onboard BFSI products in days not months — standardized compliance and single API for multi-bank access`,
     `No per-bank reconciliation overhead — Blostem handles settlement across bank partners through one API`,
-    `Purpose-built for Indian regulatory requirements — RBI compliance handles natively, not as an afterthought`,
+    `Purpose-built for Indian regulatory requirements — RBI compliance handled natively`,
     `Backed by Rainmatter (Zerodha's VC) — proven infrastructure trusted by leading Indian wealth platforms`,
   ];
 
-  // Generate why we lose
-  const why_we_lose = generateWhyWeLose(signals);
+  // Why we lose
+  const why_we_lose = generateWhyWeLoseForType(compType, signals);
 
-  // Generate pricing positioning
-  const pricing_positioning = generatePricingPositioning(intelligence, signals, competitor);
+  // Pricing positioning (relative, actionable)
+  const pricing_positioning = intelligence.pricing_posture?.opacity === "opaque"
+    ? `${competitor}'s pricing is opaque — wallet/gateway models often hide MDR + settlement fees that compound at scale. Blostem offers transparent B2B SaaS pricing with no per-bank overhead.`
+    : `${competitor} uses ${intelligence.pricing_posture?.model || "unknown"} model at ${intelligence.pricing_posture?.entryPrice || "unclear pricing"} — this typically scales unpredictably for multi-bank BFSI products. Blostem provides predictable infra-layer pricing.`;
 
-  // Generate landmines (questions that expose competitor gaps)
+  // Landmines (aggressive, tied to real signals)
   const landmines: string[] = [];
   const seenLandmines = new Set<string>();
 
-  for (const signal of complaintSignals.slice(0, 4)) {
-    const landmine = generateLandmine(signal);
+  for (const signal of sortedComplaints.slice(0, 4)) {
+    const landmine = generateAggressiveLandmine(signal, compType);
     if (landmine && !seenLandmines.has(landmine)) {
       seenLandmines.add(landmine);
       landmines.push(landmine);
     }
   }
 
-  // Default landmines if none derived from signals
   if (landmines.length === 0) {
     landmines.push("How are you handling multi-bank reconciliation today? What's your current settlement timeline?");
     landmines.push("What's your compliance overhead per bank partnership? How does that scale as you add more banks?");
   }
 
-  // Generate FUD responses
+  // FUD responses
   const fudResponses: string[] = [];
-  const qualitySignals = signals.filter(s =>
-    s.normalizedType === "quality_issue" || s.normalizedType === "reliability_issue"
-  );
+  const riskSignals = signals.filter(s => isImplicitComplaint(s) && getImplicitComplaintType(s) === "trust_risk");
 
-  for (const signal of qualitySignals.slice(0, 2)) {
-    const fud = generateFUDResponse(signal, competitor);
-    if (fud) fudResponses.push(fud);
+  for (const signal of riskSignals.slice(0, 1)) {
+    fudResponses.push(`Blostem separates you from fraud liability — ${signal.value.slice(0, 100)}. ${competitor} absorbed this risk; you would too with their wallet model.`);
   }
 
-  // Add default FUD response
-  if (fudResponses.length === 0) {
-    fudResponses.push(`Blostem is built by BFSI infrastructure veterans — Rainmatter backing provides both capital and market credibility through Zerodha's ecosystem.`);
-  }
+  fudResponses.push(`Blostem is built by BFSI infrastructure veterans — Rainmatter backing provides capital + market credibility through Zerodha's ecosystem.`);
 
-  // Generate proof points (evidence-backed, speakable)
+  // Proof points
   const proof_points = [
     `Zerodha integrates Blostem for FD booking on Coin — proven at Indian fintech scale`,
     `Single API replaces N bank integrations — reduces integration maintenance by ~80%`,
     `Purpose-built for FD, RD, and compliance-heavy banking products — not a general payments tool adapted`,
   ];
 
-  // Company overview (1-2 lines, AE-ready)
+  // Company overview (competitor-specific, no context contamination)
   const company_overview = intelligence.competitor_summary
-    ? intelligence.competitor_summary.slice(0, 300)
+    ? intelligence.competitor_summary.split(".").slice(0, 2).join(".").trim()
     : `${competitor} is a BFSI competitor serving Indian wealth and fintech platforms.`;
+
+  // When to compete aggressively
+  const compete_aggressively_when = getCompeteAggressivelyTriggers(compType, signals);
 
   const primitives: DealPrimitives = {
     company_overview,
+    competitor_type: compType,
     quick_dismisses,
     objection_handling,
     why_we_win: whyWeWin,
@@ -323,9 +513,11 @@ export function deriveDealPrimitives(
     landmines,
     FUD_responses: fudResponses,
     proof_points,
+    compete_aggressively_when,
+    signal_trace,
   };
 
-  console.log(`[DealPrimitives] Generated: ${objection_handling.length} objections, ${landmines.length} landmines, ${quick_dismisses.length} dismisses`);
+  console.log(`[DealPrimitives] Generated: ${objection_handling.length} objections, ${landmines.length} landmines, compete_when: ${compete_aggressively_when.length} triggers`);
 
   return primitives;
 }

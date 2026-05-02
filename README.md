@@ -69,13 +69,16 @@ CounterSignal is a real-time competitive intelligence tool designed for Blostem'
 
 ### 5. Signal Validation (`src/lib/pipeline/signals.ts`)
 - Cross-type validation: signals must appear in ≥2 domain types
-- Domain types: official, review, news, forum
+- Domain types: independent, review, news, forum
 - Content quality scoring with Indian context bonuses
 
 ### 5.5. Deal Primitives (`src/lib/pipeline/deal-primitives.ts`) ← NEW
-- Rule-based derivation of AE-aligned outputs from validated signals
+- **Competitor Type Detection**: wallet | gateway | infra | NBFC → type-specific attack vectors
+- **Implicit Complaint Expansion**: fraud, regulatory, financial health signals → deal weapons
+- **Signal Traceability**: shows signal → weapon reasoning for demo differentiation
+- **Competitor-Specific Dismisses**: not template leakage, actual competitor type-based
+- **Trigger-Based Selling**: `compete_aggressively_when` for deal timing
 - No additional LLM calls (+1-2ms latency only)
-- Outputs: quick_dismisses, objection_handling, why_we_win, why_we_lose, pricing_positioning, landmines, FUD_responses, proof_points
 
 ### 6. VARS Generation (`src/lib/pipeline/vars-objections.ts`)
 - LLM Call 2: VARS layer + objection handling (supporting layer)
@@ -175,6 +178,7 @@ src/
 ├── lib/
 │   ├── blostem-profile.ts    # Blostem company profile
 │   └── pipeline/
+│       ├── deal-primitives.ts # AE deal primitives derivation
 │       ├── extract.ts        # LLM extraction
 │       ├── index.ts          # Pipeline orchestrator
 │       ├── preprocess.ts     # Rules-based preprocessing

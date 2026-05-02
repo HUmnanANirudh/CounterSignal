@@ -43,14 +43,23 @@ export interface ObjectionHandling {
 }
 
 // AE-Aligned Battlecard Types
+export type CompetitorType = "wallet" | "gateway" | "infra" | "NBFC" | "unknown";
+
 export interface AEObjectionHandling {
   objection: string;
   counter: string;
   evidence: string[];
 }
 
+export interface SignalTrace {
+  signal: string;
+  weapon: string;
+  type: string;
+}
+
 export interface AE_BATTLECARD {
   company_overview: string;
+  competitor_type: CompetitorType;
   quick_dismisses: string[];
   objection_handling: AEObjectionHandling[];
   why_we_win: string[];
@@ -59,6 +68,8 @@ export interface AE_BATTLECARD {
   landmines: string[];
   FUD_responses: string[];
   proof_points: string[];
+  compete_aggressively_when: string[];
+  signal_trace: SignalTrace[];
 }
 
 export interface Citation {
