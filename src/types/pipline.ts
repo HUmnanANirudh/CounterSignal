@@ -18,8 +18,10 @@ export interface Signal {
 export type PipelineStage =
   | "idle"
   | "searching"
+  | "preprocessing"
   | "extracting"
   | "deriving"
+  | "primitives"
   | "vars"
   | "rendering"
   | "complete"

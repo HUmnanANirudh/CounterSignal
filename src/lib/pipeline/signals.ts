@@ -25,14 +25,13 @@ const SIGNAL_NORMALIZATIONS: Record<string, string> = {
 };
 
 // Domain type classification for cross-type validation
-const DOMAIN_TYPE_MAP: Record<string, "review" | "news" | "official" | "forum"> = {
-  // Official/competitor
-  "razorpay.com": "official",
-  "cashfree.com": "official",
-  "paytm.com": "official",
-  "stripe.com": "official",
-  "plaid.com": "official",
-  "adyen.com": "official",
+const DOMAIN_TYPE_MAP: Record<string, "independent" | "review" | "news" | "forum"> = {
+  // Independent BFSI fintech media (highest trust)
+  "inc42.com": "independent",
+  "medianama.com": "independent",
+  "entrackr.com": "independent",
+  "dealstreet.in": "independent",
+  "vccircle.com": "independent",
   // Reviews
   "g2.com": "review",
   "capterra.com": "review",
@@ -41,10 +40,7 @@ const DOMAIN_TYPE_MAP: Record<string, "review" | "news" | "official" | "forum"> 
   "reddit.com": "forum",
   "twitter.com": "forum",
   "x.com": "forum",
-  // News
-  "inc42.com": "news",
-  "medianama.com": "news",
-  "entrackr.com": "news",
+  // News (general business/financial)
   "moneycontrol.com": "news",
   "economictimes.indiatimes.com": "news",
   "forbes.com": "news",
@@ -52,7 +48,6 @@ const DOMAIN_TYPE_MAP: Record<string, "review" | "news" | "official" | "forum"> 
   "bloomberg.com": "news",
   "techcrunch.com": "news",
   "livemint.com": "news",
-  "dealstreet.in": "news",
 };
 
 function normalizeDomain(url: string): string {
@@ -70,9 +65,9 @@ function normalizeDomain(url: string): string {
   }
 }
 
-function getDomainType(url: string): "review" | "news" | "official" | "forum" {
+function getDomainType(url: string): "review" | "news" | "independent" | "forum" {
   const normalized = normalizeDomain(url);
-  return DOMAIN_TYPE_MAP[normalized] || "official";
+  return DOMAIN_TYPE_MAP[normalized] || "news";
 }
 
 export function normalizeSignal(text: string): string {

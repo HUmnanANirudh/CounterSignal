@@ -119,7 +119,7 @@ export async function extract(
     }
   }
 
-  const model = google("gemini-2.5-flash-lite");
+  const model = google("gemini-2.5-flash");
 
   const pricingInfo = preprocessed.pricing_candidates.slice(0, 8).join("\n") || "None found";
   const complaintInfo = preprocessed.complaint_sentences.slice(0, 8).join("\n") || "None found";

@@ -63,7 +63,7 @@ export async function generateVarsAndObjections(
   sourceMap: Record<string, string[]>,
   citations: Citation[]
 ): Promise<{ vars_layer: VARSLayer; objection_handling: ObjectionHandling[] }> {
-  const model = google("gemini-2.5-flash-lite");
+  const model = google("gemini-2.5-flash");
 
   const validCitationIds = citations.map(c => c.id);
 

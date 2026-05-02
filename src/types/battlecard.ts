@@ -42,6 +42,25 @@ export interface ObjectionHandling {
   evidence: string;
 }
 
+// AE-Aligned Battlecard Types
+export interface AEObjectionHandling {
+  objection: string;
+  counter: string;
+  evidence: string[];
+}
+
+export interface AE_BATTLECARD {
+  company_overview: string;
+  quick_dismisses: string[];
+  objection_handling: AEObjectionHandling[];
+  why_we_win: string[];
+  why_we_lose: string[];
+  pricing_positioning: string;
+  landmines: string[];
+  FUD_responses: string[];
+  proof_points: string[];
+}
+
 export interface Citation {
   id: string;
   title: string;
@@ -76,9 +95,12 @@ export interface Battlecard {
   recent_moves: RecentMove[];
   customer_truths: CustomerTruths;
 
+  // Legacy VARS layer (kept for backwards compatibility)
   VARS_layer: VARSLayer;
-
   objection_handling: ObjectionHandling[];
+
+  // New AE-aligned layer
+  AE_BATTLECARD: AE_BATTLECARD;
 
   sourceMap: Record<string, string[]>;
   citations: Citation[];

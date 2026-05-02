@@ -3,59 +3,62 @@ import type { Citation } from "@/types/battlecard";
 
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 
-// Domain authority tiers (higher = more trusted)
+// Domain authority tiers (higher = more trusted for INDEPENDENT intelligence)
+// NOTE: We DON'T hardcode competitor domains — the system dynamically detects them
+// via getSourceType() when processing search results. Only independent platforms are listed.
 const DOMAIN_TIERS: Record<string, number> = {
-  "razorpay.com": 10,
-  "cashfree.com": 10,
-  "paytm.com": 10,
-  "stripe.com": 10,
-  "plaid.com": 10,
-  "adyen.com": 10,
-  "bloomberg.com": 9,
-  "livemint.com": 9,
-  "moneycontrol.com": 9,
-  "forbes.com": 9,
-  "forbesindia.in": 9,
-  "inc42.com": 8,
-  "entrackr.com": 8,
-  "medianama.com": 8,
-  "vccircle.com": 8,
-  "dealstreet.in": 8,
-  "g2.com": 7,
-  "capterra.com": 7,
-  "trustpilot.com": 7,
-  "reddit.com": 6,
-  "twitter.com": 5,
-  "x.com": 5,
+  // Independent startup media (most valuable for BFSI fintech intelligence)
+  "inc42.com": 10,
+  "medianama.com": 10,
+  "entrackr.com": 9,
+  "dealstreet.in": 9,
+  "vccircle.com": 9,
+  // Independent news (financial/business)
+  "moneycontrol.com": 8,
+  "livemint.com": 8,
+  "forbesindia.in": 8,
+  "bloomberg.com": 7,
+  "forbes.com": 7,
+  "economictimes.indiatimes.com": 7,
+  // Review platforms (user sentiment)
+  "g2.com": 9,
+  "capterra.com": 9,
+  "trustpilot.com": 8,
+  // Forums (ground truth from users)
+  "reddit.com": 7,
+  // Social (real-time signals, lower weight)
+  "twitter.com": 4,
+  "x.com": 4,
+  // Tech news (general)
   "techcrunch.com": 5,
-  "economictimes.indiatimes.com": 5,
 };
 
 const SOURCE_WEIGHTS: Record<string, number> = {
-  "razorpay.com": 1.0,
-  "cashfree.com": 1.0,
-  "paytm.com": 1.0,
-  "stripe.com": 1.0,
-  "plaid.com": 1.0,
-  "adyen.com": 1.0,
-  "inc42.com": 0.95,
-  "medianama.com": 0.95,
-  "entrackr.com": 0.9,
-  "livemint.com": 0.9,
+  // Independent startup media
+  "inc42.com": 1.0,
+  "medianama.com": 1.0,
+  "entrackr.com": 0.95,
+  "dealstreet.in": 0.95,
+  "vccircle.com": 0.9,
+  // Independent news
   "moneycontrol.com": 0.9,
+  "livemint.com": 0.9,
   "forbesindia.in": 0.9,
-  "dealstreet.in": 0.9,
-  "forbes.com": 0.6,
-  "bloomberg.com": 0.6,
-  "techcrunch.com": 0.6,
-  "economictimes.indiatimes.com": 0.6,
-  "g2.com": 0.85,
-  "capterra.com": 0.85,
+  "bloomberg.com": 0.7,
+  "forbes.com": 0.7,
+  "economictimes.indiatimes.com": 0.7,
+  // Review platforms
+  "g2.com": 0.95,
+  "capterra.com": 0.95,
   "trustpilot.com": 0.85,
-  "reddit.com": 0.7,
-  "twitter.com": 0.5,
-  "x.com": 0.5,
-  "wsj.com": 0.3,
+  // Forums
+  "reddit.com": 0.8,
+  // Social (lower - unverified)
+  "twitter.com": 0.4,
+  "x.com": 0.4,
+  // Tech news
+  "techcrunch.com": 0.5,
+  // Competitor domains detected dynamically via getSourceType() — not hardcoded here
 };
 
 const MAX_PER_DOMAIN = 3;
@@ -201,19 +204,28 @@ function scoreResult(result: { url: string; title: string; content: string; scor
   return (sourceWeight * 10) + signalBonus + (result.score * 2) + authorityBonus + contentQuality;
 }
 
-type SourceType = "official" | "review" | "news" | "forum";
+type SourceType = "independent" | "review" | "news" | "forum";
 
-function getSourceType(url: string): SourceType {
+function getSourceType(url: string, competitor?: string): SourceType {
   const normalized = normalizeDomain(url);
   const lower = normalized.toLowerCase();
 
-  if (["razorpay.com", "cashfree.com", "paytm.com", "stripe.com", "plaid.com", "adyen.com"].some(d => lower.includes(d))) {
-    return "official";
+  // Check if competitor domain (derived from company name) — classify as "news" since they may publish articles
+  // Note: Competitor domains get LOW authority权重 anyway (see DOMAIN_TIERS default)
+  if (competitor) {
+    const competitorDomain = competitor.toLowerCase().replace(/\s+/g, "") + ".com";
+    if (lower.includes(competitorDomain)) {
+      return "news"; // Treat as news type, not preferred
+    }
   }
+
   if (["g2.com", "capterra.com", "trustpilot.com"].some(d => lower.includes(d))) {
     return "review";
   }
-  if (["inc42.com", "medianama.com", "entrackr.com", "moneycontrol.com", "bloomberg.com", "forbes.com", "techcrunch.com", "livemint.com", "dealstreet.in"].some(d => lower.includes(d))) {
+  if (["inc42.com", "medianama.com", "entrackr.com", "dealstreet.in", "vccircle.com"].some(d => lower.includes(d))) {
+    return "independent";
+  }
+  if (["moneycontrol.com", "bloomberg.com", "forbes.com", "techcrunch.com", "livemint.com", "economictimes.indiatimes.com"].some(d => lower.includes(d))) {
     return "news";
   }
   if (["reddit.com", "twitter.com", "x.com"].some(d => lower.includes(d))) {
@@ -224,11 +236,15 @@ function getSourceType(url: string): SourceType {
 }
 
 function selectDiversifiedResults(
-  scored: Array<{ url: string; title: string; content: string; score: number; sourceWeight: number; compositeScore: number }>
+  scored: Array<{ url: string; title: string; content: string; score: number; sourceWeight: number; compositeScore: number }>,
+  competitor?: string
 ): Array<{ url: string; title: string; content: string; score: number; sourceWeight: number }> {
   const selected: Array<{ url: string; title: string; content: string; score: number; sourceWeight: number }> = [];
   const domainUsage: Record<string, number> = {};
-  const typeCount: Record<SourceType, number> = { official: 0, review: 0, news: 0, forum: 0 };
+  const typeCount: Record<SourceType, number> = { independent: 0, review: 0, news: 0, forum: 0 };
+
+  // First pass: ensure we get at least 2 from each critical type
+  const typeTargets = { independent: 3, review: 2, news: 3, forum: 2 };
 
   for (const result of scored) {
     if (result.sourceWeight < MIN_AUTHORITY_THRESHOLD) {
@@ -238,10 +254,10 @@ function selectDiversifiedResults(
     const domain = normalizeDomain(result.url);
     const sourceType = getSourceType(result.url);
 
-    typeCount[sourceType] = (typeCount[sourceType] || 0) + 1;
-    domainUsage[domain] = (domainUsage[domain] || 0) + 1;
+    // Prioritize underrepresented types
+    const typeDeficit = (typeTargets[sourceType] || 0) - (typeCount[sourceType] || 0);
 
-    if (domainUsage[domain] <= MAX_PER_DOMAIN) {
+    if (typeDeficit > 0 && domainUsage[domain] <= MAX_PER_DOMAIN) {
       selected.push({
         url: result.url,
         title: result.title,
@@ -249,13 +265,37 @@ function selectDiversifiedResults(
         score: result.score,
         sourceWeight: result.sourceWeight,
       });
+      domainUsage[domain] = (domainUsage[domain] || 0) + 1;
+      typeCount[sourceType] = (typeCount[sourceType] || 0) + 1;
     }
 
     if (selected.length >= MAX_TOTAL) break;
   }
 
+  // Second pass: fill remaining slots with highest scoring results
+  if (selected.length < MAX_TOTAL) {
+    for (const result of scored) {
+      if (selected.some(s => s.url === result.url)) continue;
+      if (result.sourceWeight < MIN_AUTHORITY_THRESHOLD) continue;
+
+      const domain = normalizeDomain(result.url);
+      if (domainUsage[domain] >= MAX_PER_DOMAIN) continue;
+
+      selected.push({
+        url: result.url,
+        title: result.title,
+        content: result.content,
+        score: result.score,
+        sourceWeight: result.sourceWeight,
+      });
+      domainUsage[domain] = (domainUsage[domain] || 0) + 1;
+
+      if (selected.length >= MAX_TOTAL) break;
+    }
+  }
+
   const topDomains = Object.entries(domainUsage).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  console.log(`[Search] Selected ${selected.length} results. Types: official=${typeCount.official}, review=${typeCount.review}, news=${typeCount.news}, forum=${typeCount.forum}`);
+  console.log(`[Search] Selected ${selected.length} results. Types: independent=${typeCount.independent}, review=${typeCount.review}, news=${typeCount.news}, forum=${typeCount.forum}`);
   console.log(`[Search] Top domains: ${topDomains.map(([d, c]) => `${d}=${c}`).join(", ")}`);
   return selected;
 }
@@ -355,7 +395,7 @@ export async function search(competitor: string): Promise<SearchResult> {
   const scored = allResults.map((r) => ({ ...r, compositeScore: scoreResult(r) }));
   scored.sort((a, b) => b.compositeScore - a.compositeScore);
 
-  const topResults = selectDiversifiedResults(scored);
+  const topResults = selectDiversifiedResults(scored, competitor);
 
   console.log(`[Search] Top 5 results:`);
   topResults.slice(0, 5).forEach((r, i) => {

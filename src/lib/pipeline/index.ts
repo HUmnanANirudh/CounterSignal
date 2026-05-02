@@ -1,10 +1,11 @@
+import type { Battlecard } from "@/types/battlecard";
 import { search } from "./search";
 import { preprocess } from "./preprocess";
 import { extract } from "./extract";
 import { deriveSignals, calculateConfidence } from "./signals";
+import { deriveDealPrimitives } from "./deal-primitives";
 import { generateVarsAndObjections } from "./vars-objections";
 import { renderMarkdown } from "./render";
-import type { Battlecard, PipelineStage } from "@/types";
 
 export interface PipelineCallbacks {
   onStageChange: (stage: PipelineStage, message: string) => void;
@@ -12,6 +13,15 @@ export interface PipelineCallbacks {
   onComplete: (battlecard: Battlecard) => void;
   onError: (error: Error) => void;
 }
+
+export type PipelineStage =
+  | "searching"
+  | "preprocessing"
+  | "extracting"
+  | "deriving"
+  | "primitives"
+  | "vars"
+  | "rendering";
 
 const cache = new Map<string, { battlecard: Battlecard; timestamp: number }>();
 const CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -80,7 +90,7 @@ export async function runPipeline(
       console.log(`[Pipeline] Domain breakdown: ${JSON.stringify(debugInfo.sourcesByDomain)}`);
     }
 
-    callbacks.onStageChange("searching", `Found ${citations.length} sources from ${debugInfo?.domainCount || 1} domains, preprocessing...`);
+    callbacks.onStageChange("preprocessing", `Found ${citations.length} sources from ${debugInfo?.domainCount || 1} domains, preprocessing...`);
     const preprocessed = preprocess(rawContent);
 
     if (preprocessed.pricing_candidates.length === 0) {
@@ -101,7 +111,12 @@ export async function runPipeline(
       dataGaps.push("low_confidence_signal");
     }
 
-    callbacks.onStageChange("vars", "Generating VARS positioning and objection handling...");
+    // NEW: Derive deal primitives (AE-aligned)
+    callbacks.onStageChange("primitives", "Generating deal primitives for AE use...");
+    const ae_battlecard = deriveDealPrimitives(extracted, signals, citations, competitor);
+
+    // Keep legacy VARS for backwards compatibility
+    callbacks.onStageChange("vars", "Generating VARS positioning...");
     const { vars_layer, objection_handling } = await generateVarsAndObjections(
       extracted,
       signals,
@@ -121,8 +136,11 @@ export async function runPipeline(
       pricing_posture: extracted.pricing_posture || { model: "unknown", entryPrice: "opaque", tiers: [], opacity: "opaque" },
       recent_moves,
       customer_truths: extracted.customer_truths || { positives: [], negatives: [], keyComplaints: [] },
+      // Legacy layers
       VARS_layer: vars_layer,
       objection_handling,
+      // New AE-aligned layer
+      AE_BATTLECARD: ae_battlecard,
       sourceMap,
       citations: citations.slice(0, 8),
       confidence,
