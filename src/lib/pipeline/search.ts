@@ -25,13 +25,30 @@ const SOURCE_WEIGHTS: Record<string, number> = {
   "npi_bing_com": 0.4,
 };
 
-const MIN_SOURCES_PER_DOMAIN = 1;
-const MIN_DOMAINS = 2;
 const MAX_PER_DOMAIN = 3;
 const MAX_TOTAL = 10;
 
+function normalizeDomain(url: string): string {
+  try {
+    const hostname = new URL(url).hostname.replace("www.", "");
+    // Normalize regional trustpilot domains
+    if (hostname.includes("trustpilot")) return "trustpilot";
+    // Normalize WSJ subdomains
+    if (hostname.includes("wsj")) return "wsj";
+    // Return second-level domain (e.g., "capterra.com" from "www.capterra.com")
+    const parts = hostname.split(".");
+    if (parts.length >= 2) {
+      return parts.slice(-2).join(".");
+    }
+    return hostname;
+  } catch {
+    return "unknown";
+  }
+}
+
 function getSourceWeight(url: string): number {
-  const lower = url.toLowerCase();
+  const normalized = normalizeDomain(url);
+  const lower = normalized.toLowerCase();
   for (const [domain, weight] of Object.entries(SOURCE_WEIGHTS)) {
     if (lower.includes(domain)) return weight;
   }
@@ -75,7 +92,7 @@ function selectDiversifiedResults(
   const domainUsage: Record<string, number> = {};
 
   for (const result of scored) {
-    const domain = new URL(result.url).hostname.replace("www.", "");
+    const domain = normalizeDomain(result.url);
     domainUsage[domain] = (domainUsage[domain] || 0) + 1;
 
     if (domainUsage[domain] <= MAX_PER_DOMAIN) {
@@ -210,7 +227,7 @@ export async function search(competitor: string): Promise<SearchResult> {
     id: `citation-${index + 1}`,
     title: item.title,
     url: item.url,
-    source: new URL(item.url).hostname.replace("www.", ""),
+    source: normalizeDomain(item.url),
     score: item.score,
   }));
 
@@ -224,15 +241,22 @@ export async function search(competitor: string): Promise<SearchResult> {
     ...topResults.map((r) => `## ${r.title}\n\n${r.content}`),
   ].join("\n\n");
 
-  const uniqueDomains = Object.keys(domainCount).length;
+  // Count normalized domains for debug info
+  const normalizedDomainCount: Record<string, number> = {};
+  for (const domain of Object.keys(domainCount)) {
+    const normalized = normalizeDomain(`https://${domain}`);
+    normalizedDomainCount[normalized] = (normalizedDomainCount[normalized] || 0) + domainCount[domain];
+  }
+
+  const uniqueNormalizedDomains = Object.keys(normalizedDomainCount).length;
 
   return {
     citations,
     rawContent,
     debugInfo: {
-      domainCount: uniqueDomains,
+      domainCount: uniqueNormalizedDomains,
       totalResults: allResults.length,
-      sourcesByDomain: domainCount,
+      sourcesByDomain: normalizedDomainCount,
     },
   };
 }

@@ -19,9 +19,14 @@ async function fetchFallbackContent(url: string): Promise<string> {
 function parseJsonResponse(text: string): ExtractedData | null {
   let cleaned = text.trim();
 
-  // Try to extract from code blocks first
-  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (codeBlockMatch) cleaned = codeBlockMatch[1];
+  // Strip markdown code fences (both ```json and plain ```)
+  cleaned = cleaned.replace(/^```json\s*/m, '').replace(/```\s*$/m, '');
+  cleaned = cleaned.replace(/^```\s*/m, '').replace(/```\s*$/m, '');
+
+  // Handle single backticks if present
+  if (cleaned.startsWith('`') && !cleaned.startsWith('``')) {
+    cleaned = cleaned.replace(/^`+/, '').replace(/`+$/, '');
+  }
 
   // Find JSON object - find first { and last }
   const jsonStart = cleaned.indexOf('{');
@@ -47,6 +52,8 @@ function validatePricingData(pricing: ExtractedData["pricing_posture"]): Extract
   }
   return pricing;
 }
+
+const EXTRACTION_MAX_RETRIES = 1;
 
 export async function extract(
   preprocessed: PreprocessedData,
@@ -82,12 +89,13 @@ export async function extract(
   const prompt = `You are a fintech competitive intelligence analyst. Extract STRICTLY VALIDATED information about "${competitor}".
 
 CRITICAL VALIDATION RULES:
-1. PRICING: If the model is "transaction", do NOT assign a fixed entry price like "$59". Transaction models use % + fixed fee. If no clear pricing found, set entryPrice to "opaque".
-2. COMPLAINTS: Only include complaints that are mentioned in multiple sources (≥2). Single-source complaints are anecdotal noise.
-3. SOURCES: Track which source each piece of data comes from.
+1. PRICING: Only extract pricing if explicitly stated. If model is "transaction", entryPrice should be percentage-based (e.g., "2.9% + $0.30"), never a fixed dollar amount like "$99/month". If no clear pricing found, set opacity to "opaque".
+2. CATEGORIES: Never merge different pricing categories. Payments pricing, issuing fees, and optional features must be separate. If you cannot distinguish, mark as "opaque".
+3. COMPLAINTS: Only include complaints from ≥2 independent sources (review, news, forum types). Single-source complaints are noise.
+4. HONESTY: If data is insufficient or conflicting, set fields to "limited_data" or "opaque". Do NOT merge conflicting data.
 
 Research Data (prioritized by signal type):
-${processedData.raw_content.slice(0, 5000)}
+${processedData.raw_content.slice(0, 4000)}
 
 Extracted Pricing Data:
 ${pricingInfo}
@@ -108,7 +116,7 @@ Return ONLY a valid JSON object with this structure:
   },
   "pricing_posture": {
     "model": "subscription|transaction|freemium|custom|unknown",
-    "entryPrice": "only if clearly stated as fixed price (e.g., '$99/month'), otherwise 'opaque' for transaction models or percentage-based",
+    "entryPrice": "only if clearly and consistently stated, otherwise 'opaque'",
     "tiers": [],
     "opacity": "clear|opaque"
   },
@@ -120,36 +128,42 @@ Return ONLY a valid JSON object with this structure:
   }
 }
 
-IMPORTANT: If you cannot find clear pricing data, set opacity to "opaque". Do not guess or generalize.`;
+IMPORTANT: Be conservative. If pricing is unclear or conflicting, mark as opaque. Do not hallucinate merged pricing.`;
 
-  console.log(`[Extract] Calling LLM...`);
+  // Retry loop for extraction
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= EXTRACTION_MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      console.log(`[Extract] Retry attempt ${attempt}...`);
+    }
 
-  const { text } = await generateText({
-    model,
-    prompt,
-    temperature: 0.1,
-    maxOutputTokens: 4096,
-  });
+    console.log(`[Extract] Calling LLM...`);
 
-  console.log(`[Extract] LLM response preview: ${text.slice(0, 200)}...`);
+    const { text } = await generateText({
+      model,
+      prompt,
+      temperature: 0.1,
+      maxOutputTokens: 4096,
+    });
 
-  const parsed = parseJsonResponse(text);
+    console.log(`[Extract] LLM response preview: ${text.slice(0, 200)}...`);
 
-  if (parsed) {
-    parsed.pricing_posture = validatePricingData(parsed.pricing_posture);
+    const parsed = parseJsonResponse(text);
 
-    const complaintCount = parsed.customer_truths?.keyComplaints?.length || 0;
-    console.log(`[Extract] Extracted ${complaintCount} complaints, ${parsed.customer_truths?.positives?.length || 0} positives`);
+    if (parsed) {
+      parsed.pricing_posture = validatePricingData(parsed.pricing_posture);
 
-    return parsed;
+      const complaintCount = parsed.customer_truths?.keyComplaints?.length || 0;
+      console.log(`[Extract] Extracted ${complaintCount} complaints, ${parsed.customer_truths?.positives?.length || 0} positives`);
+
+      return parsed;
+    }
+
+    lastError = new Error(`JSON parse failed after ${attempt + 1} attempt(s)`);
+    console.error(`[Extract] Attempt ${attempt + 1} failed`);
   }
 
-  console.error(`[Extract] Failed to parse JSON`);
-  return {
-    competitor_summary: preprocessed.raw_content.slice(0, 300) || `${competitor} is a fintech.`,
-    positioning: { tagline: "unknown", targetSegments: [], differentiators: [] },
-    pricing_posture: { model: "unknown", entryPrice: "opaque", tiers: [], opacity: "opaque" },
-    recent_moves: [],
-    customer_truths: { positives: [], negatives: [], keyComplaints: [] },
-  };
+  // All retries exhausted - throw error to abort pipeline
+  console.error(`[Extract] FAILED after ${EXTRACTION_MAX_RETRIES + 1} attempts. Aborting pipeline.`);
+  throw lastError;
 }

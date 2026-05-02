@@ -9,9 +9,14 @@ const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
 function parseJsonResponse(text: string): { vars_layer: VARSLayer; objection_handling: ObjectionHandling[] } | null {
   let cleaned = text.trim();
 
-  // Try to extract from code blocks first
-  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (codeBlockMatch) cleaned = codeBlockMatch[1];
+  // Strip markdown code fences (both ```json and plain ```)
+  cleaned = cleaned.replace(/^```json\s*/m, '').replace(/```\s*$/m, '');
+  cleaned = cleaned.replace(/^```\s*/m, '').replace(/```\s*$/m, '');
+
+  // Handle single backticks if present
+  if (cleaned.startsWith('`') && !cleaned.startsWith('``')) {
+    cleaned = cleaned.replace(/^`+/, '').replace(/`+$/, '');
+  }
 
   // Find JSON object - find first { and last }
   const jsonStart = cleaned.indexOf('{');

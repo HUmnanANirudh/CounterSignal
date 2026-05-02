@@ -24,7 +24,44 @@ const SIGNAL_NORMALIZATIONS: Record<string, string> = {
   "refund": "refund_issue",
 };
 
-const MIN_SOURCES_PER_CLAIM = 2;
+// Domain type classification for cross-type validation
+const DOMAIN_TYPE_MAP: Record<string, "review" | "news" | "official" | "forum"> = {
+  "g2.com": "review",
+  "capterra.com": "review",
+  "trustpilot.com": "review",
+  "reddit.com": "forum",
+  "twitter.com": "forum",
+  "x.com": "forum",
+  "inc42.com": "news",
+  "medianama.com": "news",
+  "entrackr.com": "news",
+  "moneycontrol.com": "news",
+  "economictimes.indiatimes.com": "news",
+  "forbes.com": "news",
+  "forbesindia.in": "news",
+  "bloomberg.com": "news",
+  "techcrunch.com": "news",
+};
+
+function normalizeDomain(url: string): string {
+  try {
+    const hostname = new URL(url).hostname.replace("www.", "");
+    if (hostname.includes("trustpilot")) return "trustpilot";
+    if (hostname.includes("wsj")) return "wsj";
+    const parts = hostname.split(".");
+    if (parts.length >= 2) {
+      return parts.slice(-2).join(".");
+    }
+    return hostname;
+  } catch {
+    return "unknown";
+  }
+}
+
+function getDomainType(url: string): "review" | "news" | "official" | "forum" {
+  const normalized = normalizeDomain(url);
+  return DOMAIN_TYPE_MAP[normalized] || "official";
+}
 
 export function normalizeSignal(text: string): string {
   const lower = text.toLowerCase();
@@ -35,11 +72,7 @@ export function normalizeSignal(text: string): string {
 }
 
 function getSourceDomain(url: string): string {
-  try {
-    return new URL(url).hostname.replace("www.", "");
-  } catch {
-    return "unknown";
-  }
+  return normalizeDomain(url);
 }
 
 export function deriveSignals(
@@ -49,8 +82,8 @@ export function deriveSignals(
   const signals: Signal[] = [];
   const sourceMap: Record<string, string[]> = {};
   const signalAppearances: Record<string, {
-    normalizedType: string; text: string; citationIds: string[]; domains: Set<string> 
-}> = {};
+    normalizedType: string; text: string; citationIds: string[]; domains: Set<string>; domainTypes: Set<string>
+  }> = {};
 
   let signalIndex = 0;
 
@@ -62,12 +95,14 @@ export function deriveSignals(
     const key = `${normalizedType}:${text.slice(0, 50).toLowerCase()}`;
 
     if (!signalAppearances[key]) {
-      signalAppearances[key] = { normalizedType, text, citationIds: [], domains: new Set() };
+      signalAppearances[key] = { normalizedType, text, citationIds: [], domains: new Set(), domainTypes: new Set() };
     }
 
     const domain = getSourceDomain(citation.url);
+    const domainType = getDomainType(citation.url);
     signalAppearances[key].citationIds.push(citation.id);
     signalAppearances[key].domains.add(domain);
+    signalAppearances[key].domainTypes.add(domainType);
   };
 
   for (const candidate of preprocessed.pricing_candidates.slice(0, 6)) {
@@ -111,14 +146,18 @@ export function deriveSignals(
   }
 
   for (const [key, appearance] of Object.entries(signalAppearances)) {
-    const domains = Array.from(appearance.domains);
+    const domainTypes = Array.from(appearance.domainTypes);
+    const uniqueTypes = domainTypes.filter((t, i) => domainTypes.indexOf(t) === i);
 
-    if (domains.length < MIN_SOURCES_PER_CLAIM && appearance.normalizedType !== "feature") {
-      console.log(`[Signals] Filtering out single-source claim: ${key.slice(0, 40)}... (only ${domains.length} domain(s))`);
+    // Require ≥2 independent domain types for validation (not just domains)
+    const hasCrossTypeAgreement = uniqueTypes.length >= 2;
+    const isFeature = appearance.normalizedType === "feature";
+
+    if (!hasCrossTypeAgreement && !isFeature) {
+      console.log(`[Signals] Filtering: ${key.slice(0, 40)}... (types: ${uniqueTypes.join(",")}, need ≥2)`);
       continue;
     }
 
-    const [, text] = key.split(":");
     const id = `signal_${signalIndex++}`;
 
     signals.push({
@@ -132,7 +171,7 @@ export function deriveSignals(
     sourceMap[id] = appearance.citationIds.slice(0, 3);
   }
 
-  console.log(`[Signals] Derived ${signals.length} validated signals (cross-domain validated)`);
+  console.log(`[Signals] Derived ${signals.length} validated signals (cross-type validated)`);
 
   return { signals, sourceMap };
 }
@@ -159,12 +198,16 @@ export function calculateConfidence(
   nCitations: number,
   signals: Signal[],
   citations: Citation[],
-  debugInfo?: { domainCount: number; sourcesByDomain: Record<string, number> }
 ): { score: number; factors: string[] } {
   const factors: string[] = [];
 
+  // Count unique normalized domains
   const uniqueDomains = new Set(citations.map(c => getSourceDomain(c.url))).size;
   const domainDiversityScore = Math.min(uniqueDomains / 3, 1);
+
+  // Count unique domain TYPES for cross-type validation
+  const domainTypes = citations.map(c => getDomainType(c.url));
+  const uniqueDomainTypes = new Set(domainTypes).size;
 
   let domainPenalty = 0;
   if (uniqueDomains < 2) {
@@ -172,6 +215,12 @@ export function calculateConfidence(
     factors.push(`⚠ Only ${uniqueDomains} source domain(s) - low diversity`);
   } else {
     factors.push(`✓ ${uniqueDomains} source domains - good diversity`);
+  }
+
+  if (uniqueDomainTypes < 2) {
+    factors.push(`⚠ Only ${uniqueDomainTypes} domain type(s) - need review+news+forum`);
+  } else {
+    factors.push(`✓ ${uniqueDomainTypes} domain types - good cross-type coverage`);
   }
 
   const sourceCountScore = Math.min(nCitations / 6, 1);
@@ -184,7 +233,7 @@ export function calculateConfidence(
 
   const recencyScore = 0.5;
 
-  const baseScore = 0.4 * sourceCountScore + 0.3 * domainDiversityScore + 0.2 * signalDiversityScore + 0.1 * recencyScore;
+  const baseScore = 0.35 * sourceCountScore + 0.25 * domainDiversityScore + 0.2 * signalDiversityScore + 0.1 * recencyScore + 0.1 * (uniqueDomainTypes >= 2 ? 1 : 0);
   const score = Math.max(0.1, Math.min(0.95, baseScore - domainPenalty));
 
   console.log(`[Confidence] Score: ${Math.round(score * 100)}% (${factors.join(", ")})`);
