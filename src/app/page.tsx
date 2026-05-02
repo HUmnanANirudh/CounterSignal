@@ -106,9 +106,22 @@ export default function Home() {
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
+        logging: false,
+        imageTimeout: 0,
         onclone: (clonedDoc) => {
-          const computedStyle = clonedDoc.body.style;
-          computedStyle.setProperty("background-color", "#ffffff", "important");
+          const body = clonedDoc.body;
+          body.style.setProperty("background-color", "#ffffff", "important");
+          body.style.setProperty("color", "#000000", "important");
+          const allElements = clonedDoc.querySelectorAll("*");
+          allElements.forEach((el: Element) => {
+            const htmlEl = el as HTMLElement;
+            htmlEl.style.setProperty("background-color", "transparent", "important");
+            htmlEl.style.setProperty("color", "#000000", "important");
+            const inlineBg = htmlEl.getAttribute("style");
+            if (inlineBg && inlineBg.includes("lab")) {
+              htmlEl.setAttribute("style", inlineBg.replace(/lab\([^)]*\)/g, "#ffffff"));
+            }
+          });
         },
       });
       const imgData = canvas.toDataURL("image/png");

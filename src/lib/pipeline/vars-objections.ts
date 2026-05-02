@@ -1,9 +1,23 @@
 import { generateText } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { blostemProfile } from "@/lib/blostem-profile";
-import type { VARSLayer, ObjectionHandling, Citation,ExtractedIntelligence,Signal } from "@/types";
+import type { VARSLayer, ObjectionHandling, Citation, ExtractedIntelligence, Signal } from "@/types";
+import { validateCitationIntegrity } from "./signals";
 
 const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
+
+const OBJECTION_TYPES = ["pricing", "feature_gap", "ease_of_use", "integration", "support"] as const;
+
+function constrainObjections(
+  objections: ObjectionHandling[],
+  validCitationIds: string[]
+): ObjectionHandling[] {
+  return objections.map(obj => ({
+    ...obj,
+    counter: validateCitationIntegrity(obj.counter, validCitationIds),
+    evidence: validCitationIds.includes(obj.evidence) ? obj.evidence : validCitationIds[0] || "citation-1",
+  })).filter(obj => obj.counter.length > 10);
+}
 
 export async function generateVarsAndObjections(
   intelligence: ExtractedIntelligence,
@@ -13,61 +27,62 @@ export async function generateVarsAndObjections(
 ): Promise<{ vars_layer: VARSLayer; objection_handling: ObjectionHandling[] }> {
   const model = google("gemini-2.5-flash-lite");
 
-  const citationsJson = citations.map((c) => ({ id: c.id, title: c.title, url: c.url, source: c.source })).slice(0, 6);
-  const signalsJson = signals.slice(0, 8).map((s) => ({ id: s.id, type: s.type, value: s.value.slice(0, 100), citations: sourceMap[s.id] || [] }));
+  const validCitationIds = citations.map(c => c.id);
+  const signalsJson = signals.slice(0, 8).map((s) => ({
+    id: s.id,
+    type: s.type,
+    normalizedType: s.normalizedType,
+    value: s.value.slice(0, 100),
+    citations: sourceMap[s.id] || [],
+  }));
 
   const prompt = `You are a BFSI sales strategist. Generate VARS positioning and objection handling for a deal against a competitor.
 
 ## Competitor Intelligence
-Competitor: ${intelligence.positioning.tagline || "Fintech competitor"}
-Summary: ${intelligence.competitor_summary}
-Pricing: ${intelligence.pricing_posture.model} - ${intelligence.pricing_posture.entryPrice} (${intelligence.pricing_posture.opacity})
-Key complaints: ${intelligence.customer_truths.keyComplaints.join("; ") || "none"}
-Positives: ${intelligence.customer_truths.positives.join("; ") || "none"}
+Positioning: ${intelligence.positioning?.tagline || "Fintech competitor"}
+Summary: ${intelligence.competitor_summary || "No summary available"}
+Pricing: ${intelligence.pricing_posture?.model || "unknown"} - ${intelligence.pricing_posture?.entryPrice || "unknown"} (${intelligence.pricing_posture?.opacity || "unknown"})
+Key complaints: ${intelligence.customer_truths?.keyComplaints?.join("; ") || "none"}
+Positives: ${intelligence.customer_truths?.positives?.join("; ") || "none"}
 
 ## Blostem Profile (our company)
 Strengths: ${blostemProfile.strengths.join("; ")}
 Differentiators: ${blostemProfile.differentiators.join("; ")}
-Pricing: ${blostemProfile.pricing_model} - ${blostemProfile.pricing_philosophy}
 
 ## Signals (grounding evidence)
-${signalsJson.map((s) => `[${s.id}] ${s.type}: "${s.value}" citations: ${s.citations.join(", ") || "none"}`).join("\n")}
+${signalsJson.map((s) => `[${s.id}] (${s.normalizedType || s.type}): "${s.value}"`).join("\n")}
+
+## Valid Objection Types
+${OBJECTION_TYPES.join(", ")}
 
 ## Citations
-${citationsJson.map((c) => `[${c.id}] ${c.title} (${c.source})`).join("\n")}
+${citations.map((c) => `[${c.id}] ${c.title}`).join("\n")}
 
 ## Your Task
 
 Generate VARS and objection handling grounded in the signals above.
 
-### VARS Layer
-Generate these 4 statements. Each MUST cite signal IDs like [pricing_signal_0] or [complaint_1] when grounding in evidence.
+### VARS Layer (4 statements)
+Each MUST reference signal IDs like [pricing_signal_0] or [complaint_1].
 
-**Validate**: "A prospect considering [competitor] is likely evaluating: [insert based on signals]"
-**Acknowledge**: "[competitor] excels at: [insert from signals]"
-**Reframe**: "However, [competitor]'s [weakness from signals] creates tradeoffs in: [insert]"
-**Specify**: "Blostem uniquely provides: [insert from Blostem profile strengths]"
-
-### Objection Handling
-Generate 2-3 objection/counter pairs. Each counter MUST cite evidence:
-- An objection derived from the competitor's strengths or customer complaints
-- A counter grounded in Blostem's differentiators, citing [citation-N] for competitor weakness
+### Objection Handling (2-3 pairs)
+- Derive objection type from: ${OBJECTION_TYPES.join(", ")}
+- Counter MUST cite evidence from citations list
+- NO fabricated citation IDs
 
 ## Output Format
-Return ONLY a JSON object:
+Return ONLY JSON:
 {
   "vars_layer": {
-    "validate": "string with [citation-N] references",
-    "acknowledge": "string with [citation-N] references",
-    "reframe": "string with [citation-N] references",
-    "specify": "string (Blostem strengths, no citations needed)"
+    "validate": "string with [signal-id] refs",
+    "acknowledge": "string with [signal-id] refs",
+    "reframe": "string with [signal-id] refs",
+    "specify": "Blostem strengths only"
   },
   "objection_handling": [
-    {"objection": "string", "counter": "string with [citation-N] references", "evidence": "citation-N"}
+    {"objection": "type-based", "counter": "cited counter", "evidence": "citation-N"}
   ]
-}
-
-NO fabricated citation IDs. Only use citation IDs from the list above.`;
+}`;
 
   const { text } = await generateText({
     model,
@@ -78,6 +93,7 @@ NO fabricated citation IDs. Only use citation IDs from the list above.`;
 
   try {
     const parsed = JSON.parse(text.trim()) as { vars_layer: VARSLayer; objection_handling: ObjectionHandling[] };
+    parsed.objection_handling = constrainObjections(parsed.objection_handling || [], validCitationIds);
     return parsed;
   } catch {
     return {

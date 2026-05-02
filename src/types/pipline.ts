@@ -12,6 +12,7 @@ export interface Signal {
   type: "pricing" | "complaint" | "launch" | "feature" | "positive";
   value: string;
   citationIds: string[];
+  normalizedType?: string;
 }
 
 export type PipelineStage =
