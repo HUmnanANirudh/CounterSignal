@@ -102,7 +102,15 @@ export default function Home() {
       const { default: jsPDF } = await import("jspdf");
 
       const element = battlecardRef.current;
-      const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        onclone: (clonedDoc) => {
+          const computedStyle = clonedDoc.body.style;
+          computedStyle.setProperty("background-color", "#ffffff", "important");
+        },
+      });
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();

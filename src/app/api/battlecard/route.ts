@@ -3,7 +3,6 @@ import { runPipeline } from "@/lib/pipeline";
 import type { PipelineStage } from "@/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
