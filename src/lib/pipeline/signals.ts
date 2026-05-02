@@ -26,12 +26,22 @@ const SIGNAL_NORMALIZATIONS: Record<string, string> = {
 
 // Domain type classification for cross-type validation
 const DOMAIN_TYPE_MAP: Record<string, "review" | "news" | "official" | "forum"> = {
+  // Official/competitor
+  "razorpay.com": "official",
+  "cashfree.com": "official",
+  "paytm.com": "official",
+  "stripe.com": "official",
+  "plaid.com": "official",
+  "adyen.com": "official",
+  // Reviews
   "g2.com": "review",
   "capterra.com": "review",
   "trustpilot.com": "review",
+  // Forums
   "reddit.com": "forum",
   "twitter.com": "forum",
   "x.com": "forum",
+  // News
   "inc42.com": "news",
   "medianama.com": "news",
   "entrackr.com": "news",
@@ -41,6 +51,8 @@ const DOMAIN_TYPE_MAP: Record<string, "review" | "news" | "official" | "forum"> 
   "forbesindia.in": "news",
   "bloomberg.com": "news",
   "techcrunch.com": "news",
+  "livemint.com": "news",
+  "dealstreet.in": "news",
 };
 
 function normalizeDomain(url: string): string {
