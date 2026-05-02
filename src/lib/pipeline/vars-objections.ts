@@ -9,19 +9,21 @@ const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
 function parseJsonResponse(text: string): { vars_layer: VARSLayer; objection_handling: ObjectionHandling[] } | null {
   let cleaned = text.trim();
 
+  // Try to extract from code blocks first
   const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (codeBlockMatch) {
-    cleaned = codeBlockMatch[1];
-  }
+  if (codeBlockMatch) cleaned = codeBlockMatch[1];
 
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (jsonMatch) {
-    cleaned = jsonMatch[0];
+  // Find JSON object - find first { and last }
+  const jsonStart = cleaned.indexOf('{');
+  const jsonEnd = cleaned.lastIndexOf('}');
+  if (jsonStart >= 0 && jsonEnd > jsonStart) {
+    cleaned = cleaned.slice(jsonStart, jsonEnd + 1);
   }
 
   try {
     return JSON.parse(cleaned) as { vars_layer: VARSLayer; objection_handling: ObjectionHandling[] };
-  } catch {
+  } catch (e) {
+    console.error(`[Vars] JSON parse failed: ${e}`);
     return null;
   }
 }
@@ -43,7 +45,7 @@ export async function generateVarsAndObjections(
   sourceMap: Record<string, string[]>,
   citations: Citation[]
 ): Promise<{ vars_layer: VARSLayer; objection_handling: ObjectionHandling[] }> {
-  const model = google("gemini-2.5-flash-lite");
+  const model = google("gemini-2.5-flash");
 
   const validCitationIds = citations.map(c => c.id);
 
@@ -113,7 +115,6 @@ Return ONLY a JSON object:
     model,
     prompt,
     temperature: 0.3,
-    maxOutputTokens: 2048,
   });
 
   console.log(`[Vars] LLM response: ${text.slice(0, 300)}...`);

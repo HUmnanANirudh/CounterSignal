@@ -18,13 +18,22 @@ async function fetchFallbackContent(url: string): Promise<string> {
 
 function parseJsonResponse(text: string): ExtractedData | null {
   let cleaned = text.trim();
+
+  // Try to extract from code blocks first
   const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   if (codeBlockMatch) cleaned = codeBlockMatch[1];
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (jsonMatch) cleaned = jsonMatch[0];
+
+  // Find JSON object - find first { and last }
+  const jsonStart = cleaned.indexOf('{');
+  const jsonEnd = cleaned.lastIndexOf('}');
+  if (jsonStart >= 0 && jsonEnd > jsonStart) {
+    cleaned = cleaned.slice(jsonStart, jsonEnd + 1);
+  }
+
   try {
     return JSON.parse(cleaned) as ExtractedData;
-  } catch {
+  } catch (e) {
+    console.error(`[Extract] JSON parse failed: ${e}`);
     return null;
   }
 }
@@ -64,7 +73,7 @@ export async function extract(
     }
   }
 
-  const model = google("gemini-2.5-flash-lite");
+  const model = google("gemini-2.5-flash");
 
   const pricingInfo = preprocessed.pricing_candidates.slice(0, 8).join("\n") || "None found";
   const complaintInfo = preprocessed.complaint_sentences.slice(0, 8).join("\n") || "None found";
@@ -119,7 +128,7 @@ IMPORTANT: If you cannot find clear pricing data, set opacity to "opaque". Do no
     model,
     prompt,
     temperature: 0.1,
-    maxOutputTokens: 2048,
+    maxOutputTokens: 4096,
   });
 
   console.log(`[Extract] LLM response preview: ${text.slice(0, 200)}...`);
