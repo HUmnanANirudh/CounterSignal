@@ -246,24 +246,6 @@ interface AE_BATTLECARD {
   proof_points: string[];                // Evidence-backed speakable points
 }
 ```
-
-## Troubleshooting
-
-### "No battlecard received"
-- Check API key configuration
-- Verify Gemini quota not exceeded
-- Check browser console for error messages
-
-### Low confidence score
-- Ensure multiple domain types are represented
-- Verify Tavily returned results from varied sources
-- Check that competitor name is correct
-
-### Hallucinated pricing
-- Pricing patterns like "9%" without context are rejected
-- Transaction models only accept percentage + fixed fee format
-- System marks pricing as "opaque" when unclear
-
 ## Dependencies
 
 - **@ai-sdk/google**: Gemini LLM integration
