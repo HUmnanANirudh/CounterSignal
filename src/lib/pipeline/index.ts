@@ -6,6 +6,7 @@ import { deriveSignals, calculateConfidence } from "./signals";
 import { deriveDealPrimitives } from "./deal-primitives";
 import { generateVarsAndObjections } from "./vars-objections";
 import { renderMarkdown } from "./render";
+import { sanitizeForAE } from "./sanitize";
 
 export interface PipelineCallbacks {
   onStageChange: (stage: PipelineStage, message: string) => void;
@@ -112,9 +113,12 @@ export async function runPipeline(
       dataGaps.push("low_confidence_signal");
     }
 
-    // NEW: Derive deal primitives (AE-aligned)
+    // Derive deal primitives (AE-aligned)
     callbacks.onStageChange("primitives", "Generating deal primitives for AE use...");
-    const ae_battlecard = deriveDealPrimitives(extracted, signals, citations, competitor);
+    const raw_ae_battlecard = deriveDealPrimitives(extracted, signals, citations, competitor);
+
+    // Post-processing: sanitize for AE readability
+    const ae_battlecard = sanitizeForAE(raw_ae_battlecard);
 
     // Keep legacy VARS for backwards compatibility
     callbacks.onStageChange("vars", "Generating VARS positioning...");

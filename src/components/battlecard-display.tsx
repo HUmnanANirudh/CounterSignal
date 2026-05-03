@@ -18,7 +18,7 @@ import {
   Users,
   Newspaper,
   Rocket,
-  Link2,
+  Layers,
   BookOpen,
   CircleAlert,
   ChevronDown,
@@ -276,7 +276,7 @@ function StructuredBattlecard({
           accentColor="#fbbf24"
         >
           <ul className="list-none space-y-2">
-            {ae.quick_dismisses.map((d, i) => (
+            {ae.quick_dismisses.slice(0, 2).map((d, i) => (
               <li
                 key={i}
                 className="flex items-start gap-2 bg-amber-500/5 rounded-lg px-3 py-2"
@@ -338,7 +338,7 @@ function StructuredBattlecard({
             accentColor="#34d399"
           >
             <ul className="list-none space-y-1.5">
-              {ae.why_we_win.map((w, i) => (
+              {ae.why_we_win.slice(0, 4).map((w, i) => (
                 <li key={i} className="flex items-start gap-2">
                   <CheckCircle2
                     size={14}
@@ -357,7 +357,7 @@ function StructuredBattlecard({
             accentColor="#fb923c"
           >
             <ul className="list-none space-y-1.5">
-              {ae.why_we_lose.map((l, i) => (
+              {ae.why_we_lose.slice(0, 4).map((l, i) => (
                 <li key={i} className="flex items-start gap-2">
                   <AlertTriangle
                     size={14}
@@ -460,7 +460,7 @@ function StructuredBattlecard({
           accentColor="#f87171"
         >
           <ul className="list-none space-y-2">
-            {ae.landmines.map((l, i) => (
+            {ae.landmines.slice(0, 3).map((l, i) => (
               <li
                 key={i}
                 className="flex items-start gap-2 bg-red-500/5 rounded-lg px-3 py-2"
@@ -481,7 +481,7 @@ function StructuredBattlecard({
           accentColor="#c084fc"
         >
           <ul className="list-none space-y-1.5">
-            {ae.FUD_responses.map((f, i) => (
+            {ae.FUD_responses.slice(0, 3).map((f, i) => (
               <li key={i} className="flex items-start gap-2">
                 <RotateCcw
                   size={14}
@@ -502,7 +502,7 @@ function StructuredBattlecard({
           accentColor="#2dd4bf"
         >
           <ul className="list-none space-y-1.5">
-            {ae.proof_points.map((p, i) => (
+            {ae.proof_points.slice(0, 3).map((p, i) => (
               <li key={i} className="flex items-start gap-2">
                 <BarChart3
                   size={14}
@@ -529,7 +529,7 @@ function StructuredBattlecard({
                   What customers love
                 </p>
                 <ul className="list-none space-y-1">
-                  {customer_truths.positives.map((p, i) => (
+                  {customer_truths.positives.slice(0, 3).map((p, i) => (
                     <li key={i} className="flex items-start gap-2 text-xs">
                       <CheckCircle2
                         size={12}
@@ -547,7 +547,7 @@ function StructuredBattlecard({
                   What customers dislike
                 </p>
                 <ul className="list-none space-y-1">
-                  {customer_truths.negatives.map((n, i) => (
+                  {customer_truths.negatives.slice(0, 3).map((n, i) => (
                     <li key={i} className="flex items-start gap-2 text-xs">
                       <CircleAlert
                         size={12}
@@ -566,7 +566,7 @@ function StructuredBattlecard({
                 Key Complaints
               </p>
               <ul className="list-none space-y-1">
-                {customer_truths.keyComplaints.map((c, i) => (
+                {customer_truths.keyComplaints.slice(0, 3).map((c, i) => (
                   <li key={i} className="flex items-start gap-2 text-xs">
                     <AlertTriangle
                       size={12}
@@ -613,7 +613,7 @@ function StructuredBattlecard({
           accentColor="#22d3ee"
         >
           <ul className="list-none space-y-1.5">
-            {ae.compete_aggressively_when.map((t, i) => (
+            {ae.compete_aggressively_when.slice(0, 4).map((t, i) => (
               <li key={i} className="flex items-start gap-2">
                 <Rocket size={14} className="text-cyan-400 mt-0.5 shrink-0" />
                 <span>{t}</span>
@@ -623,35 +623,46 @@ function StructuredBattlecard({
         </SectionCard>
       )}
 
-      {/* ── Signal Trace ───────────────────────────────────── */}
-      {ae.signal_trace?.length > 0 && (
+      {/* ── VARS Framework ─────────────────────────────────── */}
+      {battlecard.VARS_layer && (
         <SectionCard
-          icon={<Link2 size={16} />}
-          title="Signal Trace"
+          icon={<Layers size={16} />}
+          title="VARS Framework"
           accentColor="#818cf8"
         >
-          <p className="text-xs text-muted-foreground italic mb-3">
-            Signal → Weapon traceability
-          </p>
-          <div className="space-y-2">
-            {ae.signal_trace.map((trace, i) => (
-              <div
-                key={i}
-                className="rounded-lg border border-white/[0.05] px-4 py-3"
-              >
-                <p className="text-xs text-muted-foreground mb-1">Signal</p>
-                <p className="italic">&ldquo;{trace.signal}&rdquo;</p>
-                <p className="text-xs text-muted-foreground mt-2 mb-1">
-                  → Weapon
+          <div className="space-y-3">
+            {battlecard.VARS_layer.validate && (
+              <div>
+                <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wider mb-1">
+                  Validate
                 </p>
-                <p className="text-indigo-300">{trace.weapon}</p>
-                {trace.type && (
-                  <div className="mt-2">
-                    <Badge>{trace.type}</Badge>
-                  </div>
-                )}
+                <p>{battlecard.VARS_layer.validate}</p>
               </div>
-            ))}
+            )}
+            {battlecard.VARS_layer.acknowledge && (
+              <div>
+                <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-1">
+                  Acknowledge
+                </p>
+                <p>{battlecard.VARS_layer.acknowledge}</p>
+              </div>
+            )}
+            {battlecard.VARS_layer.reframe && (
+              <div>
+                <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-1">
+                  Reframe
+                </p>
+                <p>{battlecard.VARS_layer.reframe}</p>
+              </div>
+            )}
+            {battlecard.VARS_layer.specify && (
+              <div>
+                <p className="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-1">
+                  Specify
+                </p>
+                <p>{battlecard.VARS_layer.specify}</p>
+              </div>
+            )}
           </div>
         </SectionCard>
       )}

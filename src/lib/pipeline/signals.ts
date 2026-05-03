@@ -356,7 +356,14 @@ export function calculateConfidence(
     0.05 * (uniqueDomainTypes >= 2 ? 1 : 0) +
     severityBonus
   );
-  const score = Math.max(0.1, Math.min(0.95, baseScore - domainPenalty));
+
+  // Hard cap: if signals < 4, confidence ≤ 0.8
+  const signalCap = signals.length < 4 ? 0.8 : 0.95;
+  if (signals.length < 4) {
+    factors.push(`⚠ Signal cap: ${signals.length} signals < 4, capping at ${Math.round(signalCap * 100)}%`);
+  }
+
+  const score = Math.max(0.1, Math.min(signalCap, baseScore - domainPenalty));
 
   console.log(`[Confidence] Score: ${Math.round(score * 100)}% (${factors.join(", ")})`);
 

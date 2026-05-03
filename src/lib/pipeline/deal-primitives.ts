@@ -164,6 +164,30 @@ function generateTypeSpecificDismiss(competitor: string, compType: CompetitorTyp
   }
 }
 
+// Detect compound pricing model from competitor type + signals
+function detectPricingModel(compType: CompetitorType, signals: Signal[]): string {
+  const hasWalletSignal = signals.some(s => s.value.toLowerCase().includes("wallet") || s.value.toLowerCase().includes("upi"));
+  const hasLendingSignal = signals.some(s => s.value.toLowerCase().includes("lending") || s.value.toLowerCase().includes("loan") || s.value.toLowerCase().includes("credit"));
+  const hasPaymentSignal = signals.some(s => s.value.toLowerCase().includes("payment") || s.value.toLowerCase().includes("gateway") || s.value.toLowerCase().includes("checkout"));
+
+  const parts: string[] = [];
+
+  if (compType === "wallet" || hasWalletSignal) parts.push("transaction + wallet");
+  else if (compType === "gateway" || hasPaymentSignal) parts.push("transaction");
+
+  if (hasLendingSignal) parts.push("lending cross-sell");
+
+  if (parts.length > 0) return parts.join(" + ");
+
+  switch (compType) {
+    case "wallet": return "transaction + wallet";
+    case "gateway": return "transaction-based";
+    case "NBFC": return "lending margin + transaction";
+    case "infra": return "usage-based";
+    default: return "transaction-based";
+  }
+}
+
 function generateCounterForSignal(
   signal: Signal,
   competitor: string,
@@ -364,9 +388,32 @@ export function deriveDealPrimitives(
 
   let objection_handling: DealPrimitives["objection_handling"] = [];
 
+  // Mandatory first objection: "We already use {competitor}" — weaponize real complaints
+  const topComplaints = allComplaintSignals
+    .filter(s => s.normalizedType === "support_issue" || s.normalizedType === "payout_issue" || s.normalizedType === "account_issue" || classifyNegativeSignal(s.value) === "trust_risk")
+    .slice(0, 2);
+  const complaintSummary = topComplaints.length > 0
+    ? topComplaints.map(s => s.value.slice(0, 60).toLowerCase()).join(" and ")
+    : "support delays and pricing complexity";
+  const firstCitation = topComplaints[0]?.citationIds[0] || citations[0]?.id || "";
+
+  objection_handling.push({
+    objection: `We already use ${competitor}`,
+    counter: `Many teams start there, but complaints around ${complaintSummary} become critical as volumes scale${firstCitation ? ` [${firstCitation}]` : ""}.`,
+    evidence: topComplaints.flatMap(s => s.citationIds).slice(0, 2),
+  });
+
+  // Add unique signal-based objections (deduped from the mandatory one)
+  const uniqueObjectionTypes = new Set<string>();
+  uniqueObjectionTypes.add("already_use");
+
   if (sortedComplaints.length > 0) {
-    objection_handling = sortedComplaints.slice(0, 3).map(signal => {
+    for (const signal of sortedComplaints) {
+      if (objection_handling.length >= 3) break;
+
       const signalType = classifyNegativeSignal(signal.value);
+      if (uniqueObjectionTypes.has(signalType)) continue;
+      uniqueObjectionTypes.add(signalType);
 
       let baseObjection = "";
       switch (signalType) {
@@ -379,44 +426,44 @@ export function deriveDealPrimitives(
           if (signal.normalizedType === "pricing_complaint") baseObjection = "They seem cheaper";
           else if (signal.normalizedType === "support_issue") baseObjection = "They have better support";
           else if (signal.normalizedType === "integration_issue") baseObjection = "They're easier to integrate";
-          else if (signal.normalizedType === "onboarding_delay") baseObjection = "They onboard faster";
-          else baseObjection = "They seem like a better option";
+          else continue; // skip generic duplicates
       }
 
-      return {
+      objection_handling.push({
         objection: baseObjection,
         counter: generateCounterForSignal(signal, competitor, citations, compType),
         evidence: signal.citationIds.slice(0, 2),
-      };
-    });
+      });
+    }
   } else if (preprocessedNegSignals.length > 0) {
-    // Use preprocessed negative signals as fallback
     console.log(`[DealPrimitives] Using ${preprocessedNegSignals.length} preprocessed negative signals as fallback`);
-    objection_handling = preprocessedNegSignals.slice(0, 3).map((negSignal, idx) => {
+    for (const negSignal of preprocessedNegSignals.slice(0, 2)) {
+      if (objection_handling.length >= 3) break;
       const signalType = negSignal.type as string;
+      if (uniqueObjectionTypes.has(signalType)) continue;
+      uniqueObjectionTypes.add(signalType);
+
       let baseObjection = "";
       switch (signalType) {
         case "trust_risk": baseObjection = "They seem trustworthy"; break;
-        case "financial_health": baseObjection = "They seem financially stable"; break;
         case "regulatory": baseObjection = "They seem compliant"; break;
         default: baseObjection = "They seem like a better option";
       }
 
-      // Create synthetic signal for counter generation
       const syntheticSignal: Signal = {
-        id: `fallback_${idx}`,
+        id: `fallback_${objection_handling.length}`,
         type: signalType as Signal["type"],
         value: negSignal.text,
         citationIds: [],
         normalizedType: signalType,
       };
 
-      return {
+      objection_handling.push({
         objection: baseObjection,
         counter: generateCounterForSignal(syntheticSignal, competitor, citations, compType),
         evidence: [],
-      };
-    });
+      });
+    }
   }
 
   console.log(`[DealPrimitives] Generated: ${objection_handling.length} objections`);
@@ -438,10 +485,28 @@ export function deriveDealPrimitives(
   // Why we lose
   const why_we_lose = generateWhyWeLoseForType(compType, signals);
 
-  // Pricing positioning (relative, actionable)
-  const pricing_positioning = intelligence.pricing_posture?.opacity === "opaque"
-    ? `${competitor}'s pricing is opaque — wallet/gateway models often hide MDR + settlement fees that compound at scale. Blostem offers transparent B2B SaaS pricing with no per-bank overhead.`
-    : `${competitor} uses ${intelligence.pricing_posture?.model || "unknown"} model at ${intelligence.pricing_posture?.entryPrice || "unclear pricing"} — this typically scales unpredictably for multi-bank BFSI products. Blostem provides predictable infra-layer pricing.`;
+  // Pricing classification — detect compound models instead of defaulting to "unknown"
+  const pricingModel = intelligence.pricing_posture?.model || "unknown";
+  const detectedModel = pricingModel === "unknown"
+    ? detectPricingModel(compType, signals)
+    : pricingModel;
+
+  // Pricing positioning (directional framing, never just "opaque")
+  const pricing_positioning = (() => {
+    if (compType === "wallet") {
+      return `Transaction-based pricing compounds with volume (MDR + settlement + wallet add-ons) vs Blostem's fixed infra cost model.`;
+    }
+    if (compType === "gateway") {
+      return `Gateway % + per-transaction fees scale unpredictably at volume — Blostem's infra pricing is fixed and predictable.`;
+    }
+    if (compType === "NBFC") {
+      return `Lending margin + compliance overhead creates variable cost — Blostem's infra model decouples from transaction volume.`;
+    }
+    if (intelligence.pricing_posture?.opacity === "opaque") {
+      return `${competitor}'s pricing is opaque — ${detectedModel} models compound with volume (MDR + settlement + add-ons) vs Blostem's fixed infra cost model.`;
+    }
+    return `${competitor} uses ${detectedModel} model — this scales unpredictably for multi-bank BFSI products. Blostem provides predictable infra-layer pricing.`;
+  })();
 
   // Landmines (aggressive, tied to real signals)
   const landmines: string[] = [];
