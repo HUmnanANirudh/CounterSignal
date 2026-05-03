@@ -118,19 +118,27 @@ URL/Title patterns indicating SEO scrapers or low-value content:
 
 ## Competitor Classification
 
-Categories detected via pattern matching:
+Categories detected via pattern matching. Each company is classified into a **market role**:
 
-| Category | Is Competitor | Rationale |
-|----------|---------------|-----------|
-| PAYMENT_GATEWAY | ✅ Yes | Direct overlap with Blostem's BFSI infra layer |
-| WALLET | ✅ Yes | Wallet MDR + settlement complexity vs infra predictability |
-| BANKING_API | ✅ Yes | Overlapping BFSI infra use cases |
-| NBFC | ✅ Yes | Overlapping compliance and deposit product space |
-| BROKER | ❌ No | Retail investing focus — different buyer, different use case |
-| LENDER | ❌ No | Credit/lending focus — different regulatory path |
-| INSURTECH | ❌ No | Insurance focus — different product lifecycle |
+- **COMPETITOR**: Direct substitute for Blostem (gateway, wallet, infra layer)
+- **NON_COMPETITOR**: Different category (broker, lender, aggregator — distribution layer)
+- **SUPPLY_SIDE**: Product issuers (NBFCs, FD providers) — partners, not competitors
 
-Non-competitors receive: disqualifying questions, positioning guidance, overlap analysis.
+| Category | Market Role | Rationale |
+|----------|-------------|-----------|
+| PAYMENT_GATEWAY | Competitor | Direct overlap with Blostem's BFSI infra layer |
+| WALLET | Competitor | Wallet MDR + settlement complexity vs infra predictability |
+| BANKING_API | Competitor | Overlapping BFSI infra use cases |
+| BROKER | Non-competitor | Retail investing focus — different buyer, different use case |
+| LENDER | Non-competitor | Credit/lending focus — different regulatory path |
+| AGGREGATOR | Non-competitor | Marketplace/distribution layer — different problem solved |
+| ISSUER | Supply-side | FD/NBFC product issuers — partners, not competitors |
+| INSURTECH | Non-competitor | Insurance focus — different product lifecycle |
+
+**Output modes by role:**
+- **Competitor** → Battlecard (objections, counters, landmines, VARS)
+- **Non-competitor** → Strategic Context (market role, overlap, disqualify questions)
+- **Supply-side** → Supply Card (what they offer, partnership opportunities)
 
 ## VARS Framework
 

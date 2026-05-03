@@ -313,12 +313,11 @@ function selectDiversifiedResults(
 }
 
 export function buildSearchQueries(competitor: string): string[] {
-  // Reduced to 5 core queries for latency (was 8)
+  // Core queries for competitor research
   return [
-    // Core: company overview + 
+    // Core: company overview
     `"introducing ${competitor}"`,
-    `"${competitor}" pricing plans fees`,
-    // Reviews (top priority for customer truths)
+    // Reviews (customer truths)
     `site:g2.com OR site:capterra.com "${competitor}" review`,
     // Startup news (signal sources)
     `site:inc42.com OR site:medianama.com "${competitor}"`,
@@ -326,6 +325,20 @@ export function buildSearchQueries(competitor: string): string[] {
     `site:moneycontrol.com OR site:bloomberg.com "${competitor}" fintech`,
     // Reddit/community sentiment
     `site:reddit.com "${competitor}" india fintech`,
+  ];
+}
+
+// Extended queries for non-competitor categories (aggregator, issuer)
+export function buildExtendedQueries(competitor: string): string[] {
+  return [
+    // For AGGREGATOR: marketplace/comparison queries
+    `${competitor} loan marketplace india`,
+    `${competitor} credit score service india`,
+    `${competitor} how it works loans`,
+    // For ISSUER: FD/NBFC queries
+    `${competitor} FD interest rates India`,
+    `${competitor} CRISIL rating NBFC`,
+    `${competitor} RD FD offerings`,
   ];
 }
 

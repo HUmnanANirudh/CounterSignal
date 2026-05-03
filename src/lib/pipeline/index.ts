@@ -1,4 +1,4 @@
-import type { Battlecard, NonCompetitorContext } from "@/types/battlecard";
+import type { Battlecard } from "@/types/battlecard";
 import { search } from "./search";
 import { preprocess, hasImplicitComplaints } from "./preprocess";
 import { extract } from "./extract";
@@ -6,7 +6,7 @@ import { deriveSignals, calculateConfidence } from "./signals";
 import { generateVarsAndObjections } from "./vars-objections";
 import { renderMarkdown } from "./render";
 import { sanitizeForAE } from "./sanitize";
-import { detectCompetitorCategory, generateNonCompetitorContext, getPricingModelForCategory } from "./classify";
+import { detectCompetitorCategory, getPricingModelForCategory, type MarketRole } from "./classify";
 import type { CompetitorCategory } from "./classify";
 import { deriveDealPrimitives, type CompetitorType } from "./deal-primitives";
 
@@ -98,22 +98,22 @@ export async function runPipeline(
     const preprocessed = preprocess(rawContent);
     const classification = detectCompetitorCategory(competitor, rawContent, preprocessed.pricing_candidates[0] || "");
 
-    console.log(`[Pipeline] Classification: ${classification.category} (confidence: ${classification.confidence.toFixed(2)}) - isCompetitor: ${classification.isCompetitor}`);
+    console.log(`[Pipeline] Classification: ${classification.category} (confidence: ${classification.confidence.toFixed(2)}) - marketRole: ${classification.marketRole}`);
 
-    // NON-COMPETITOR PATH
-    if (!classification.isCompetitor) {
-      console.log(`[Pipeline] ${competitor} is NOT a competitor (${classification.category}) — generating non-competitor context`);
+    // SUPPLY-SIDE PATH (issuers like NBFCs, FD providers)
+    if (classification.marketRole === "supply_side") {
+      console.log(`[Pipeline] ${competitor} is SUPPLY-SIDE (${classification.category}) — generating supply-side context`);
 
-      const nonCompetitorContext = generateNonCompetitorContext(competitor, classification, citations);
+      // Import the supply side context generator
+      const { generateSupplySideContext } = await import("./classify");
+      const supplyContext = generateSupplySideContext(competitor, classification, citations);
 
-      // Generate a minimal battlecard structure for non-competitors
-      // This keeps the same output structure but with strategic context instead
-      const minimalBattlecard: Battlecard = {
+      const supplyCard: Battlecard = {
         competitor,
         generatedAt: new Date().toISOString(),
         researchDurationMs: Date.now() - startTime,
         positioning: {
-          tagline: nonCompetitorContext.where_they_fit,
+          tagline: supplyContext.ae_positioning,
           targetSegments: [],
           differentiators: [],
         },
@@ -130,24 +130,87 @@ export async function runPipeline(
           keyComplaints: [],
         },
         VARS_layer: {
-          validate: `${competitor} is a ${classification.category}, not a direct Blostem competitor.`,
-          acknowledge: `${nonCompetitorContext.how_they_overlap.join(" ")}`,
-          reframe: `${nonCompetitorContext.why_not_competitor.join(" ")}`,
-          specify: nonCompetitorContext.how_to_position_blostem,
+          validate: `${competitor} is a ${classification.category} — part of Blostem's product layer, not competition.`,
+          acknowledge: `They offer products that Blostem can help distribute.`,
+          reframe: `Partner with issuers like this, don't compete with them.`,
+          specify: `Blostem infra can connect to multiple issuers, providing flexibility.`,
         },
         objection_handling: [],
         AE_BATTLECARD: {
-          company_overview: nonCompetitorContext.classification,
+          company_overview: supplyContext.classification,
           competitor_type: classification.category.toLowerCase() as CompetitorType,
-          category_contrast: `${competitor} = ${classification.category}; Blostem = BFSI infrastructure layer`,
-          quick_dismisses: nonCompetitorContext.disqualify_fast,
+          category_contrast: `${competitor} = product issuer (${classification.category}); Blostem = infra layer for BFSI products`,
+          quick_dismisses: supplyContext.disqualify_questions.slice(0, 2),
           objection_handling: [],
-          why_we_win: [],
+          why_we_win: supplyContext.opportunity,
           why_we_lose: [],
-          pricing_positioning: "Not applicable — different category",
-          landmines: [],
+          pricing_positioning: "Partnership model, not competition",
+          landmines: supplyContext.disqualify_questions,
           FUD_responses: [],
-          proof_points: [],
+          proof_points: supplyContext.what_they_offer,
+          compete_aggressively_when: [],
+          signal_trace: [],
+        },
+        sourceMap: {},
+        citations: citations.slice(0, 6),
+        confidence: { score: 0.8, factors: ["supply_side classification", `category: ${classification.category}`] },
+        dataGaps: [],
+      };
+
+      setCache(competitor, supplyCard);
+      const markdown = renderSupplySideContext(supplyContext);
+      callbacks.onChunk(markdown);
+      callbacks.onComplete(supplyCard);
+      return;
+    }
+
+    // NON-COMPETITOR PATH (aggregators, brokers, lenders, insurtech)
+    if (classification.marketRole === "non_competitor") {
+      console.log(`[Pipeline] ${competitor} is NOT a competitor (${classification.category}) — generating strategic context`);
+
+      const { generateStrategicContext } = await import("./classify");
+      const strategicContext = generateStrategicContext(competitor, classification, citations);
+
+      const strategicCard: Battlecard = {
+        competitor,
+        generatedAt: new Date().toISOString(),
+        researchDurationMs: Date.now() - startTime,
+        positioning: {
+          tagline: strategicContext.ae_positioning,
+          targetSegments: [],
+          differentiators: [],
+        },
+        pricing_posture: {
+          model: getPricingModelForCategory(classification.category as CompetitorCategory),
+          entryPrice: "opaque",
+          tiers: [],
+          opacity: "opaque",
+        },
+        recent_moves: [],
+        customer_truths: {
+          positives: [],
+          negatives: [],
+          keyComplaints: [],
+        },
+        VARS_layer: {
+          validate: `${competitor} is a ${classification.category} — distribution layer, not infra competition.`,
+          acknowledge: `They solve marketplace/distribution problems, different from BFSI infra.`,
+          reframe: `Understand the layer difference — infra vs distribution.`,
+          specify: strategicContext.ae_positioning,
+        },
+        objection_handling: [],
+        AE_BATTLECARD: {
+          company_overview: strategicContext.classification,
+          competitor_type: classification.category.toLowerCase() as CompetitorType,
+          category_contrast: `${competitor} = ${strategicContext.market_role}; Blostem = BFSI infrastructure layer`,
+          quick_dismisses: strategicContext.disqualify_questions.slice(0, 2),
+          objection_handling: [],
+          why_we_win: strategicContext.partner_potential,
+          why_we_lose: [],
+          pricing_positioning: "Different category — not directly comparable",
+          landmines: strategicContext.disqualify_questions,
+          FUD_responses: [],
+          proof_points: strategicContext.overlap,
           compete_aggressively_when: [],
           signal_trace: [],
         },
@@ -157,10 +220,10 @@ export async function runPipeline(
         dataGaps: ["non_competitor_category"],
       };
 
-      setCache(competitor, minimalBattlecard as Battlecard);
-      const markdown = renderNonCompetitorContext(nonCompetitorContext);
+      setCache(competitor, strategicCard);
+      const markdown = renderStrategicContext(strategicContext);
       callbacks.onChunk(markdown);
-      callbacks.onComplete(minimalBattlecard as Battlecard);
+      callbacks.onComplete(strategicCard);
       return;
     }
 
@@ -234,41 +297,76 @@ export async function runPipeline(
   }
 }
 
-function renderNonCompetitorContext(context: NonCompetitorContext): string {
+import type { SupplySideContext, StrategicContext } from "./classify";
+
+function renderSupplySideContext(context: SupplySideContext): string {
   const lines: string[] = [];
 
-  lines.push(`# ${context.competitor} — Strategic Context`);
-  lines.push(`**Classification:** NOT A COMPETITOR | **Category:** ${context.category}`);
+  lines.push(`# ${context.competitor} — Supply-Side Context`);
+  lines.push(`**Role:** PRODUCT ISSUER | **Category:** ${context.category}`);
   lines.push(`**Generated:** ${new Date().toLocaleString()}`);
   lines.push(`---`);
   lines.push(``);
-  lines.push(`## Why ${context.competitor} Is Not a Competitor`);
-  for (const reason of context.why_not_competitor) {
-    lines.push(`- ${reason}`);
+  lines.push(`## What ${context.competitor} Offers`);
+  for (const item of context.what_they_offer) {
+    lines.push(`- ${item}`);
   }
+  lines.push(``);
+  lines.push(`## Why It Matters to Blostem`);
+  for (const item of context.why_it_matters_to_blostem) {
+    lines.push(`- ${item}`);
+  }
+  lines.push(``);
+  lines.push(`## Opportunity`);
+  for (const item of context.opportunity) {
+    lines.push(`- ${item}`);
+  }
+  lines.push(``);
+  lines.push(`## AE Positioning`);
+  lines.push(`**${context.ae_positioning}**`);
+  lines.push(``);
+  lines.push(`## Disqualify Fast (For AE)`);
+  for (const q of context.disqualify_questions) {
+    lines.push(`- ${q}`);
+  }
+  lines.push(``);
+  lines.push(`---`);
+  lines.push(`*This company is supply-side (product issuer), not a competitor. Use for partnership opportunities.*`);
+
+  return lines.join("\n");
+}
+
+function renderStrategicContext(context: StrategicContext): string {
+  const lines: string[] = [];
+
+  lines.push(`# ${context.competitor} — Strategic Context`);
+  lines.push(`**Role:** ${context.market_role.toUpperCase()} | **Category:** ${context.category}`);
+  lines.push(`**Generated:** ${new Date().toLocaleString()}`);
+  lines.push(`---`);
   lines.push(``);
   lines.push(`## Where They Fit`);
   lines.push(`**${context.where_they_fit}**`);
   lines.push(``);
-
-  if (context.how_they_overlap.length > 0) {
-    lines.push(`## How They Might Overlap (Weak)`);
-    for (const overlap of context.how_they_overlap) {
-      lines.push(`- ${overlap}`);
+  lines.push(`## How They Overlap With Blostem`);
+  for (const item of context.overlap) {
+    lines.push(`- ${item}`);
+  }
+  lines.push(``);
+  if (context.partner_potential.length > 0) {
+    lines.push(`## Partnership Potential`);
+    for (const item of context.partner_potential) {
+      lines.push(`- ${item}`);
     }
     lines.push(``);
   }
-
-  lines.push(`## How to Position Blostem`);
-  lines.push(`${context.how_to_position_blostem}`);
+  lines.push(`## AE Positioning`);
+  lines.push(`**${context.ae_positioning}**`);
   lines.push(``);
-
   lines.push(`## Disqualify Fast (For AE)`);
-  for (const q of context.disqualify_fast) {
+  for (const q of context.disqualify_questions) {
     lines.push(`- ${q}`);
   }
   lines.push(``);
-
   lines.push(`---`);
   lines.push(`*This company is not in Blostem's competitive set. Use the questions above to quickly qualify/dequalify opportunities.*`);
 
