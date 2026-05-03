@@ -60,6 +60,7 @@ export interface SignalTrace {
 export interface AE_BATTLECARD {
   company_overview: string;
   competitor_type: CompetitorType;
+  category_contrast: string;  // e.g. "Razorpay = payments layer; Blostem = BFSI infra layer"
   quick_dismisses: string[];
   objection_handling: AEObjectionHandling[];
   why_we_win: string[];
@@ -100,7 +101,6 @@ export interface Battlecard {
   generatedAt: string;
   researchDurationMs: number;
 
-  competitor_summary: string;
   positioning: Positioning;
   pricing_posture: PricingPosture;
   recent_moves: RecentMove[];
@@ -124,7 +124,6 @@ export interface BattlecardInput {
 }
 
 export interface ExtractedData {
-  competitor_summary: string;
   positioning: { tagline: string; targetSegments: string[]; differentiators: string[] };
   pricing_posture: { model: string; entryPrice: string; tiers: PricingTier[]; opacity: "clear" | "opaque" };
   recent_moves: Array<{ name: string; date: string; impact: "high" | "medium" | "low" }>;

@@ -18,10 +18,10 @@ export function renderMarkdown(battlecard: Battlecard): string {
     md += `${escape(AE_BATTLECARD.company_overview)}\n\n`;
   }
 
-  // Competitor Summary
-  if (battlecard.competitor_summary) {
-    md += `## Competitor Summary\n\n`;
-    md += `${escape(battlecard.competitor_summary)}\n\n`;
+  // Category Contrast
+  if (AE_BATTLECARD.category_contrast) {
+    md += `## Category Contrast\n\n`;
+    md += `**${escape(AE_BATTLECARD.category_contrast)}**\n\n`;
   }
 
   // Positioning
@@ -141,26 +141,26 @@ export function renderMarkdown(battlecard: Battlecard): string {
     md += "\n";
   }
 
-  // Customer Truths
+  // Customer Truths (capped at 3 per sub-section)
   if (battlecard.customer_truths) {
     md += `## Customer Truths\n\n`;
     if (battlecard.customer_truths.positives?.length) {
       md += `**What customers love:**\n`;
-      for (const pos of battlecard.customer_truths.positives) {
+      for (const pos of battlecard.customer_truths.positives.slice(0, 3)) {
         md += `- ${escape(pos)}\n`;
       }
       md += "\n";
     }
     if (battlecard.customer_truths.negatives?.length) {
       md += `**What customers dislike:**\n`;
-      for (const neg of battlecard.customer_truths.negatives) {
+      for (const neg of battlecard.customer_truths.negatives.slice(0, 3)) {
         md += `- ${escape(neg)}\n`;
       }
       md += "\n";
     }
     if (battlecard.customer_truths.keyComplaints?.length) {
       md += `**Key complaints:**\n`;
-      for (const complaint of battlecard.customer_truths.keyComplaints) {
+      for (const complaint of battlecard.customer_truths.keyComplaints.slice(0, 3)) {
         md += `- ${escape(complaint)}\n`;
       }
       md += "\n";

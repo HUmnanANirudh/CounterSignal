@@ -83,7 +83,6 @@ export async function generateVarsAndObjections(
   const prompt = `Create VARS sales positioning for Blostem vs a competitor.
 
 COMPETITOR INTELLIGENCE:
-- Summary: ${intelligence.competitor_summary || "General fintech competitor"}
 - Positioning: ${intelligence.positioning?.tagline || "Payment processing company"}
 - Pricing: ${intelligence.pricing_posture?.model || "unknown"} - ${intelligence.pricing_posture?.entryPrice || "opaque"} (${intelligence.pricing_posture?.opacity || "unknown"})
 - Complaints: ${intelligence.customer_truths?.keyComplaints?.join("; ") || "Various complaints"}
@@ -91,6 +90,11 @@ COMPETITOR INTELLIGENCE:
 BLOSTEM CONTEXT:
 - Strengths: ${blostemProfile.strengths.join("; ")}
 - Differentiators: ${blostemProfile.differentiators.join("; ")}
+
+CRITICAL COUNTER RULES:
+- All counters MUST include [citation-N] references where N is a valid citation ID from the CITATIONS section
+- Counters must reference real customer pain points from signals, not generic statements
+- Example: "While [competitor] appears cheaper, Indian merchants report hidden MDR fees [citation-2] that compound at scale"
 
 IMPORTANT PRICING RULES:
 - Do NOT cite specific percentage fees (e.g., "9%", "8%") unless they appear in a citation

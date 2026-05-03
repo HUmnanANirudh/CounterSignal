@@ -1,5 +1,62 @@
 import type { Citation, PreprocessedData, Signal } from "@/types";
 
+// Types for implicit complaints (negative signals)
+type NegativeSignalType = "trust_risk" | "financial_health" | "regulatory" | "reliability" | "strategy_drift" | "general";
+
+// Severity levels for signals - HIGH severity bypasses cross-type validation
+type SignalSeverity = "HIGH" | "MEDIUM" | "LOW";
+
+interface SignalAppearance {
+  normalizedType: string;
+  text: string;
+  citationIds: string[];
+  domains: Set<string>;
+  domainTypes: Set<string>;
+  severity: SignalSeverity;
+}
+
+// Classify signal severity based on type and source
+function classifySeverity(normalizedType: string, domainTypes: Set<string>): SignalSeverity {
+  // HIGH severity: fraud, financial loss, regulatory issues from authoritative sources
+  const highSeverityTypes = ["trust_risk", "financial_health", "regulatory"];
+  if (highSeverityTypes.includes(normalizedType)) {
+    return "HIGH";
+  }
+  // MEDIUM severity: reliability issues
+  if (normalizedType === "reliability" || normalizedType === "strategy_drift") {
+    return "MEDIUM";
+  }
+  return "LOW";
+}
+
+// Classify any text into a negative signal type using regex patterns
+function classifyNegativeSignal(text: string): NegativeSignalType {
+  const lower = text.toLowerCase();
+
+  // Trust/risk patterns
+  if (/fraud|scam|₹\s*\d+\s*(?:cr|crore)|money.*launder|security.*breach|sanction.*popup|data.*breach|credential.*leak|class.*action|lawsuit/i.test(lower)) {
+    return "trust_risk";
+  }
+  // Regulatory patterns
+  if (/rbi|regulatory|ban|suspended|compliance.*issue|penalty|fine|sec.*fine|enforcement.*action|investigation/i.test(lower)) {
+    return "regulatory";
+  }
+  // Financial health patterns
+  if (/loss|declin|revenue.*drop|widen.*loss|net.*loss|operating.*loss|default|bankrupt|insolven/i.test(lower)) {
+    return "financial_health";
+  }
+  // Reliability/outage patterns
+  if (/outage|service.*disrupt|downtime|system.*fail|breach|leak/i.test(lower)) {
+    return "reliability";
+  }
+  // Strategy drift patterns
+  if (/pivot|restructur|shut.*down|close.*operation|layoff/i.test(lower)) {
+    return "strategy_drift";
+  }
+
+  return "general";
+}
+
 const SIGNAL_NORMALIZATIONS: Record<string, string> = {
   "high fees": "pricing_complaint",
   "expensive": "pricing_complaint",
@@ -24,31 +81,38 @@ const SIGNAL_NORMALIZATIONS: Record<string, string> = {
   "refund": "refund_issue",
 };
 
-// Domain type classification for cross-type validation
-const DOMAIN_TYPE_MAP: Record<string, "independent" | "review" | "news" | "forum"> = {
-  // Independent BFSI fintech media (highest trust)
-  "inc42.com": "independent",
-  "medianama.com": "independent",
-  "entrackr.com": "independent",
-  "dealstreet.in": "independent",
-  "vccircle.com": "independent",
-  // Reviews
-  "g2.com": "review",
-  "capterra.com": "review",
-  "trustpilot.com": "review",
-  // Forums
-  "reddit.com": "forum",
-  "twitter.com": "forum",
-  "x.com": "forum",
+// Auto-detect domain type using regex patterns - no hardcoded domain lists
+function detectDomainType(url: string): "review" | "news" | "independent" | "forum" {
+  const normalized = normalizeDomain(url);
+  const lower = normalized.toLowerCase();
+
+  // Review platforms
+  if (/^(g2|capterra|trustpilot|clutch|croz|goodfirms)/.test(lower)) {
+    return "review";
+  }
+
+  // Independent BFSI fintech media
+  if (/^(inc42|medianama|entrackr|dealstreet|vccircle|founderkit)/.test(lower)) {
+    return "independent";
+  }
+
   // News (general business/financial)
-  "moneycontrol.com": "news",
-  "economictimes.indiatimes.com": "news",
-  "forbes.com": "news",
-  "forbesindia.in": "news",
-  "bloomberg.com": "news",
-  "techcrunch.com": "news",
-  "livemint.com": "news",
-};
+  if (/^(moneycontrol|livemint|economictimes|forbes|bloomberg|techcrunch|reuters|ndtv|cnbc|hindu|business)/.test(lower)) {
+    return "news";
+  }
+
+  // Forums
+  if (/^(reddit|quora|stackoverflow|discord|forum)/.test(lower)) {
+    return "forum";
+  }
+
+  // Social
+  if (/^(twitter|x|facebook|linkedin|instagram)/.test(lower)) {
+    return "forum";
+  }
+
+  return "news";
+}
 
 function normalizeDomain(url: string): string {
   try {
@@ -66,8 +130,7 @@ function normalizeDomain(url: string): string {
 }
 
 function getDomainType(url: string): "review" | "news" | "independent" | "forum" {
-  const normalized = normalizeDomain(url);
-  return DOMAIN_TYPE_MAP[normalized] || "news";
+  return detectDomainType(url);
 }
 
 export function normalizeSignal(text: string): string {
@@ -88,21 +151,20 @@ export function deriveSignals(
 ): { signals: Signal[]; sourceMap: Record<string, string[]> } {
   const signals: Signal[] = [];
   const sourceMap: Record<string, string[]> = {};
-  const signalAppearances: Record<string, {
-    normalizedType: string; text: string; citationIds: string[]; domains: Set<string>; domainTypes: Set<string>
-  }> = {};
+  const signalAppearances: Record<string, SignalAppearance> = {};
 
   let signalIndex = 0;
 
   const addSignalAppearance = (
     normalizedType: string,
     text: string,
-    citation: Citation
+    citation: Citation,
+    severity: SignalSeverity = "LOW"
   ) => {
     const key = `${normalizedType}:${text.slice(0, 50).toLowerCase()}`;
 
     if (!signalAppearances[key]) {
-      signalAppearances[key] = { normalizedType, text, citationIds: [], domains: new Set(), domainTypes: new Set() };
+      signalAppearances[key] = { normalizedType, text, citationIds: [], domains: new Set(), domainTypes: new Set(), severity };
     }
 
     const domain = getSourceDomain(citation.url);
@@ -110,6 +172,12 @@ export function deriveSignals(
     signalAppearances[key].citationIds.push(citation.id);
     signalAppearances[key].domains.add(domain);
     signalAppearances[key].domainTypes.add(domainType);
+    // Upgrade severity if higher found
+    if (severity === "HIGH") {
+      signalAppearances[key].severity = "HIGH";
+    } else if (severity === "MEDIUM" && signalAppearances[key].severity === "LOW") {
+      signalAppearances[key].severity = "MEDIUM";
+    }
   };
 
   for (const candidate of preprocessed.pricing_candidates.slice(0, 6)) {
@@ -152,17 +220,42 @@ export function deriveSignals(
     }
   }
 
+  // Process negative_signals (fraud, regulatory, financial instability) from preprocessed data
+  // Using classifyNegativeSignal() to automatically detect types from text patterns
+  const v2Preprocessed = preprocessed as { negative_signals?: Array<{ text: string; type: string }> };
+  if (v2Preprocessed.negative_signals) {
+    for (const negSignal of v2Preprocessed.negative_signals.slice(0, 6)) {
+      // Auto-classify using regex patterns - works for any company, no manual mapping needed
+      const normalizedType = classifyNegativeSignal(negSignal.text);
+      // Determine severity based on signal type
+      const severity = classifySeverity(normalizedType, new Set());
+      const matchingCitations = citations.filter((c) =>
+        preprocessed.raw_content.includes(c.title.slice(0, 20))
+      );
+      for (const citation of matchingCitations) {
+        addSignalAppearance(normalizedType, negSignal.text, citation, severity);
+      }
+    }
+  }
+
   for (const [key, appearance] of Object.entries(signalAppearances)) {
     const domainTypes = Array.from(appearance.domainTypes);
     const uniqueTypes = domainTypes.filter((t, i) => domainTypes.indexOf(t) === i);
 
-    // Require ≥2 independent domain types for validation (not just domains)
+    // HIGH severity signals bypass cross-type validation (fraud/loss/regulatory from news are valid)
+    const isHighSeverity = appearance.severity === "HIGH";
     const hasCrossTypeAgreement = uniqueTypes.length >= 2;
     const isFeature = appearance.normalizedType === "feature";
 
-    if (!hasCrossTypeAgreement && !isFeature) {
+    // Filter out LOW severity signals that don't have cross-type agreement
+    if (!hasCrossTypeAgreement && !isFeature && !isHighSeverity) {
       console.log(`[Signals] Filtering: ${key.slice(0, 40)}... (types: ${uniqueTypes.join(",")}, need ≥2)`);
       continue;
+    }
+
+    // Log HIGH severity signal passing through
+    if (isHighSeverity) {
+      console.log(`[Signals] HIGH severity signal auto-validated: ${appearance.normalizedType} - ${key.slice(0, 40)}...`);
     }
 
     const id = `signal_${signalIndex++}`;
@@ -238,9 +331,31 @@ export function calculateConfidence(
   const signalDiversityScore = uniqueNormalized.size / Math.max(normalizedTypes.length, 1);
   factors.push(`${uniqueNormalized.size} signal types from ${normalizedTypes.length} signals`);
 
+  // Signal strength score: more signals = higher confidence, capped at 5 signals
+  const signalStrengthScore = Math.min(signals.length / 5, 1);
+  factors.push(`signal strength: ${signals.length} signals (need 5+ for max)`);
+
+  // Severity bonus: HIGH severity signals boost confidence
+  const highSeverityCount = signals.filter(s =>
+    ["trust_risk", "financial_health", "regulatory"].includes(s.normalizedType || "")
+  ).length;
+  const severityBonus = highSeverityCount > 0 ? 0.1 * Math.min(highSeverityCount / 3, 1) : 0;
+  if (severityBonus > 0) {
+    factors.push(`severity bonus: ${highSeverityCount} high-impact signals`);
+  }
+
   const recencyScore = 0.5;
 
-  const baseScore = 0.35 * sourceCountScore + 0.25 * domainDiversityScore + 0.2 * signalDiversityScore + 0.1 * recencyScore + 0.1 * (uniqueDomainTypes >= 2 ? 1 : 0);
+  // Base score now includes signal strength and severity
+  const baseScore = (
+    0.30 * sourceCountScore +
+    0.20 * domainDiversityScore +
+    0.15 * signalDiversityScore +
+    0.20 * signalStrengthScore +
+    0.10 * recencyScore +
+    0.05 * (uniqueDomainTypes >= 2 ? 1 : 0) +
+    severityBonus
+  );
   const score = Math.max(0.1, Math.min(0.95, baseScore - domainPenalty));
 
   console.log(`[Confidence] Score: ${Math.round(score * 100)}% (${factors.join(", ")})`);

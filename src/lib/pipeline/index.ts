@@ -1,6 +1,6 @@
 import type { Battlecard } from "@/types/battlecard";
 import { search } from "./search";
-import { preprocess } from "./preprocess";
+import { preprocess, hasImplicitComplaints } from "./preprocess";
 import { extract } from "./extract";
 import { deriveSignals, calculateConfidence } from "./signals";
 import { deriveDealPrimitives } from "./deal-primitives";
@@ -96,7 +96,8 @@ export async function runPipeline(
     if (preprocessed.pricing_candidates.length === 0) {
       dataGaps.push("pricing_not_found");
     }
-    if (preprocessed.complaint_sentences.length === 0) {
+    // Only flag complaints_not_found if NO explicit complaints AND NO implicit complaints (fraud, regulatory, financial)
+    if (preprocessed.complaint_sentences.length === 0 && !hasImplicitComplaints(preprocessed)) {
       dataGaps.push("complaints_not_found");
     }
 
@@ -131,12 +132,11 @@ export async function runPipeline(
       competitor,
       generatedAt: new Date().toISOString(),
       researchDurationMs: Date.now() - startTime,
-      competitor_summary: extracted.competitor_summary || "",
       positioning: extracted.positioning || { tagline: "unknown", targetSegments: [], differentiators: [] },
       pricing_posture: extracted.pricing_posture || { model: "unknown", entryPrice: "opaque", tiers: [], opacity: "opaque" },
       recent_moves,
       customer_truths: extracted.customer_truths || { positives: [], negatives: [], keyComplaints: [] },
-      // Legacy layers
+      // Legacy layers (kept for backwards compatibility)
       VARS_layer: vars_layer,
       objection_handling,
       // New AE-aligned layer

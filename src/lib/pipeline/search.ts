@@ -206,29 +206,42 @@ function scoreResult(result: { url: string; title: string; content: string; scor
 
 type SourceType = "independent" | "review" | "news" | "forum";
 
+// Auto-detect source type from domain using patterns - no hardcoded domain lists
 function getSourceType(url: string, competitor?: string): SourceType {
   const normalized = normalizeDomain(url);
   const lower = normalized.toLowerCase();
 
-  // Check if competitor domain (derived from company name) — classify as "news" since they may publish articles
-  // Note: Competitor domains get LOW authority权重 anyway (see DOMAIN_TIERS default)
+  // Check if competitor domain (derived from company name) — classify as "news"
   if (competitor) {
     const competitorDomain = competitor.toLowerCase().replace(/\s+/g, "") + ".com";
     if (lower.includes(competitorDomain)) {
-      return "news"; // Treat as news type, not preferred
+      return "news";
     }
   }
 
-  if (["g2.com", "capterra.com", "trustpilot.com"].some(d => lower.includes(d))) {
+  // Auto-detect from domain patterns using regex
+  // Review platforms (typically review sites)
+  if (/^(g2|capterra|trustpilot|clutch|croz|goodfirms)/.test(lower)) {
     return "review";
   }
-  if (["inc42.com", "medianama.com", "entrackr.com", "dealstreet.in", "vccircle.com"].some(d => lower.includes(d))) {
+
+  // Independent BFSI fintech media (Indian startup news focused on fintech)
+  if (/^(inc42|medianama|entrackr|dealstreet|vccircle|founderkit|startup|flutur|business|fintech)/.test(lower)) {
     return "independent";
   }
-  if (["moneycontrol.com", "bloomberg.com", "forbes.com", "techcrunch.com", "livemint.com", "economictimes.indiatimes.com"].some(d => lower.includes(d))) {
+
+  // News (general business/financial news)
+  if (/^(moneycontrol|livemint|economictimes|forbes|bloomberg|techcrunch|reuters|ndtv|cnbc|hindu|business)/.test(lower)) {
     return "news";
   }
-  if (["reddit.com", "twitter.com", "x.com"].some(d => lower.includes(d))) {
+
+  // Forums
+  if (/^(reddit|quora|stackoverflow|discord|forum)/.test(lower)) {
+    return "forum";
+  }
+
+  // Social (real-time)
+  if (/^(twitter|x|facebook|linkedin|instagram)/.test(lower)) {
     return "forum";
   }
 

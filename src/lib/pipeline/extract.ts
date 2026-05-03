@@ -76,7 +76,7 @@ function validateExtractedData(data: ExtractedData): ExtractedData {
     data.pricing_posture = { ...data.pricing_posture, entryPrice: "opaque", opacity: "opaque" };
   }
 
-  // Pattern: "9 percent" or "8 percent" is likely hallucinated for Stripe
+  // Pattern: "9 percent" or "8 percent" is likely hallucinated for any competitor
   if (entryPrice.match(/9\s*percent/) || entryPrice.match(/8\s*percent/)) {
     console.warn(`[Extract] Generic percentage pricing likely hallucinated: ${entryPrice}`);
     data.pricing_posture = { ...data.pricing_posture, entryPrice: "opaque", opacity: "opaque" };
@@ -125,18 +125,26 @@ export async function extract(
   const complaintInfo = preprocessed.complaint_sentences.slice(0, 8).join("\n") || "None found";
   const reviewInfo = preprocessed.review_blocks.slice(0, 5).join("\n") || "None found";
 
+  // Include negative signals (fraud, regulatory, financial) in the prompt
+  const v2Preprocessed = preprocessed as { negative_signals?: Array<{ text: string; type: string }> };
+  const negativeSignalsInfo = v2Preprocessed.negative_signals?.map(s => `[${s.type}] ${s.text}`).join("\n") || "None found";
+
   const prompt = `Extract fintech competitor data for "${competitor}". Return ONLY valid JSON.
 
 CRITICAL RULES - VIOLATION = REJECTED OUTPUT:
-1. PRICING MODEL: Must be ONE of: subscription, transaction, freemium, custom, unknown. NOT multiple merged models.
-2. ENTRY PRICE:
+1. DIFFERENTIATORS: Must be product capabilities or GTM advantages, NOT credentials (funding, G2 ratings, unicorn status). E.g. "API-first architecture" NOT "unicorn status".
+2. TAGLINE: Must describe what the competitor actually does as a product, NOT generic descriptors. E.g. "Payment gateway for Indian businesses" NOT "a leading fintech platform".
+3. PRICING MODEL: Must be ONE of: subscription, transaction, freemium, custom, unknown. NOT multiple merged models.
+4. ENTRY PRICE:
    - For transaction models: must be percentage + fixed fee (e.g., "2.9% + $0.30"). NEVER a fixed dollar amount alone.
    - If no clear pricing found: set to "opaque". Do NOT guess.
-3. CATEGORIES MUST BE SEPARATE: payments pricing, issuing fees, and subscription plans are DIFFERENT. Never merge them.
-4. INVALID PATTERNS (will cause rejection):
+5. CATEGORIES MUST BE SEPARATE: payments pricing, issuing fees, and subscription plans are DIFFERENT. Never merge them.
+6. INVALID PATTERNS (will cause rejection):
    - "9%" or "8%" without specific context (Stripe doesn't publish these rates)
    - Any price with "capped" that includes a percentage (e.g., "8% capped at $5")
    - Multiple conflicting dollar amounts in entryPrice
+
+7. CUSTOMER TRUTHS MUST INCLUDE: Include any fraud incidents, regulatory issues, financial instability signals as keyComplaints. Example: "₹40Cr fraud incident" should appear in keyComplaints, not just negatives.
 
 Data:
 ${processedData.raw_content.slice(0, 2000)}
@@ -144,9 +152,10 @@ ${processedData.raw_content.slice(0, 2000)}
 Pricing candidates: ${pricingInfo}
 Complaints: ${complaintInfo}
 Reviews: ${reviewInfo}
+Negative signals (fraud/regulatory/financial): ${negativeSignalsInfo}
 
 JSON (only one model, one entryPrice):
-{"competitor_summary":"string","positioning":{"tagline":"string","targetSegments":[],"differentiators":[]},"pricing_posture":{"model":"subscription|transaction|freemium|custom|unknown","entryPrice":"string","tiers":[],"opacity":"clear|opaque"},"recent_moves":[],"customer_truths":{"positives":[],"negatives":[],"keyComplaints":[]}}
+{"positioning":{"tagline":"string","targetSegments":[],"differentiators":[]},"pricing_posture":{"model":"subscription|transaction|freemium|custom|unknown","entryPrice":"string","tiers":[],"opacity":"clear|opaque"},"recent_moves":[],"customer_truths":{"positives":[],"negatives":[],"keyComplaints":[]}}
 
 Return ONLY the JSON object. No markdown, no explanation.`;
 

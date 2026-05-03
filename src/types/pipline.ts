@@ -1,7 +1,6 @@
 import { Battlecard } from "./battlecard";
 
 export interface ExtractedIntelligence {
-  competitor_summary: string;
   positioning: { tagline: string; targetSegments: string[]; differentiators: string[] };
   pricing_posture: { model: string; entryPrice: string; opacity: "clear" | "opaque" };
   customer_truths: { positives: string[]; negatives: string[]; keyComplaints: string[] };
