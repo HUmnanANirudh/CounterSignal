@@ -10,6 +10,7 @@ export function renderMarkdown(battlecard: Battlecard): string {
 
   let md = `# ${competitor} Battlecard\n\n`;
   md += `**Type:** ${AE_BATTLECARD.competitor_type?.toUpperCase() || 'BFSI'} | **Confidence:** ${Math.round(confidence.score * 100)}% | **Generated:** ${new Date(battlecard.generatedAt).toLocaleString()}\n\n`;
+  md += `---\n\n`;
 
   // Company Overview
   if (AE_BATTLECARD.company_overview) {
@@ -17,7 +18,35 @@ export function renderMarkdown(battlecard: Battlecard): string {
     md += `${escape(AE_BATTLECARD.company_overview)}\n\n`;
   }
 
-  // Quick Dismisses (1-liners for fast call use)
+  // Competitor Summary
+  if (battlecard.competitor_summary) {
+    md += `## Competitor Summary\n\n`;
+    md += `${escape(battlecard.competitor_summary)}\n\n`;
+  }
+
+  // Positioning
+  if (battlecard.positioning) {
+    md += `## Positioning\n\n`;
+    if (battlecard.positioning.tagline) {
+      md += `**Tagline:** ${escape(battlecard.positioning.tagline)}\n\n`;
+    }
+    if (battlecard.positioning.targetSegments?.length) {
+      md += `**Target Segments:**\n`;
+      for (const seg of battlecard.positioning.targetSegments) {
+        md += `- ${escape(seg)}\n`;
+      }
+      md += "\n";
+    }
+    if (battlecard.positioning.differentiators?.length) {
+      md += `**Key Differentiators:**\n`;
+      for (const diff of battlecard.positioning.differentiators) {
+        md += `- ${escape(diff)}\n`;
+      }
+      md += "\n";
+    }
+  }
+
+  // Quick Dismisses
   if (AE_BATTLECARD.quick_dismisses?.length) {
     md += `## Quick Dismisses\n\n`;
     for (const dismiss of AE_BATTLECARD.quick_dismisses) {
@@ -30,12 +59,11 @@ export function renderMarkdown(battlecard: Battlecard): string {
   if (AE_BATTLECARD.objection_handling?.length) {
     md += `## Objection Handling\n\n`;
     for (const obj of AE_BATTLECARD.objection_handling) {
-      md += `**Objection:** "${escape(obj.objection)}"\n`;
-      md += `**Counter:** ${escape(obj.counter)}\n`;
+      md += `### "${escape(obj.objection)}"\n\n`;
+      md += `**Counter:** ${escape(obj.counter)}\n\n`;
       if (obj.evidence?.length) {
-        md += `**Evidence:** ${obj.evidence.map(e => `[${e}]`).join(", ")}\n`;
+        md += `**Evidence:** ${obj.evidence.map(e => `[${e}]`).join(", ")}\n\n`;
       }
-      md += "\n";
     }
   }
 
@@ -57,10 +85,33 @@ export function renderMarkdown(battlecard: Battlecard): string {
     md += "\n";
   }
 
-  // Pricing Positioning
+  // Pricing Positioning (AE)
   if (AE_BATTLECARD.pricing_positioning) {
     md += `## Pricing Positioning\n\n`;
     md += `${escape(AE_BATTLECARD.pricing_positioning)}\n\n`;
+  }
+
+  // Pricing Posture (detailed)
+  if (battlecard.pricing_posture) {
+    md += `## Pricing Posture\n\n`;
+    if (battlecard.pricing_posture.model) {
+      md += `**Model:** ${escape(battlecard.pricing_posture.model)}\n\n`;
+    }
+    if (battlecard.pricing_posture.entryPrice) {
+      md += `**Entry Price:** ${escape(battlecard.pricing_posture.entryPrice)}\n\n`;
+    }
+    if (battlecard.pricing_posture.opacity) {
+      md += `**Pricing Opacity:** ${battlecard.pricing_posture.opacity === 'clear' ? '🟢 Clear' : '🔴 Opaque'}\n\n`;
+    }
+    if (battlecard.pricing_posture.tiers?.length) {
+      md += `| Tier | Price | Features |\n`;
+      md += `|------|-------|----------|\n`;
+      for (const tier of battlecard.pricing_posture.tiers) {
+        const features = tier.features?.map(f => escape(f)).join("; ") || "";
+        md += `| ${escape(tier.name)} | ${escape(tier.price)} | ${features} |\n`;
+      }
+      md += "\n";
+    }
   }
 
   // Landmines
@@ -90,6 +141,44 @@ export function renderMarkdown(battlecard: Battlecard): string {
     md += "\n";
   }
 
+  // Customer Truths
+  if (battlecard.customer_truths) {
+    md += `## Customer Truths\n\n`;
+    if (battlecard.customer_truths.positives?.length) {
+      md += `**What customers love:**\n`;
+      for (const pos of battlecard.customer_truths.positives) {
+        md += `- ${escape(pos)}\n`;
+      }
+      md += "\n";
+    }
+    if (battlecard.customer_truths.negatives?.length) {
+      md += `**What customers dislike:**\n`;
+      for (const neg of battlecard.customer_truths.negatives) {
+        md += `- ${escape(neg)}\n`;
+      }
+      md += "\n";
+    }
+    if (battlecard.customer_truths.keyComplaints?.length) {
+      md += `**Key complaints:**\n`;
+      for (const complaint of battlecard.customer_truths.keyComplaints) {
+        md += `- ${escape(complaint)}\n`;
+      }
+      md += "\n";
+    }
+  }
+
+  // Recent Moves
+  if (battlecard.recent_moves?.length) {
+    md += `## Recent Moves\n\n`;
+    md += `| Move | Date | Impact |\n`;
+    md += `|------|------|--------|\n`;
+    for (const move of battlecard.recent_moves) {
+      const impactBadge = move.impact === "high" ? "High" : move.impact === "medium" ? "🟡 Medium" : "🟢 Low";
+      md += `| ${escape(move.name)} | ${escape(move.date)} | ${impactBadge} |\n`;
+    }
+    md += "\n";
+  }
+
   // Compete Aggressively When
   if (AE_BATTLECARD.compete_aggressively_when?.length) {
     md += `## Push Deal When...\n\n`;
@@ -99,26 +188,37 @@ export function renderMarkdown(battlecard: Battlecard): string {
     md += "\n";
   }
 
-  // Signal Trace (traceability)
+  // Signal Trace
   if (AE_BATTLECARD.signal_trace?.length) {
     md += `## Signal Trace\n\n`;
-    md += `**Signal → Weapon traceability (show your reasoning)**\n\n`;
+    md += `*Signal → Weapon traceability (show your reasoning)*\n\n`;
     for (const trace of AE_BATTLECARD.signal_trace) {
-      md += `- "${escape(trace.signal)}"\n`;
-      md += `  → ${escape(trace.weapon)}\n`;
+      md += `- **Signal:** "${escape(trace.signal)}"\n`;
+      md += `  → **Weapon:** ${escape(trace.weapon)}\n`;
+      if (trace.type) {
+        md += `  *(Type: ${escape(trace.type)})*\n`;
+      }
     }
     md += "\n";
   }
 
   // Sources
-  md += `## Sources\n\n`;
-  for (const citation of citations) {
-    md += `- **[${citation.id}]** ${escape(citation.title)} — ${escape(citation.source)}\n`;
-    md += `  ${citation.url}\n`;
+  if (citations?.length) {
+    md += `## Sources\n\n`;
+    for (const citation of citations) {
+      md += `- **[${citation.id}]** ${escape(citation.title)} — ${escape(citation.source)}\n`;
+      md += `  ${citation.url}\n`;
+    }
+    md += "\n";
   }
 
+  // Data Gaps
   if (dataGaps?.length) {
-    md += `\n**Data Gaps:** ${dataGaps.map(d => escape(d)).join(", ")}\n`;
+    md += `## Data Gaps\n\n`;
+    for (const gap of dataGaps) {
+      md += `- ${escape(gap)}\n`;
+    }
+    md += "\n";
   }
 
   return md;
