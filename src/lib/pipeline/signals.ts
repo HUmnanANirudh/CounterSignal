@@ -357,10 +357,14 @@ export function calculateConfidence(
     severityBonus
   );
 
-  // Hard cap: if signals ≤ 4, confidence ≤ 0.85
-  const signalCap = signals.length <= 4 ? 0.85 : 0.95;
-  if (signals.length <= 4) {
-    factors.push(`⚠ Signal cap: ${signals.length} signals ≤ 4, capping at ${Math.round(signalCap * 100)}%`);
+  // Hard cap: if weak negative signals (≤4), confidence ≤ 0.90
+  const weakSignals = signals.filter(s =>
+    ["trust_risk", "financial_health", "regulatory", "reliability"].includes(s.normalizedType || "")
+  ).length;
+  let signalCap = 0.95;
+  if (weakSignals <= 4) {
+    signalCap = 0.90;
+    factors.push(`⚠ Signal cap: ${weakSignals} weak signals, capping at 90%`);
   }
 
   const score = Math.max(0.1, Math.min(signalCap, baseScore - domainPenalty));

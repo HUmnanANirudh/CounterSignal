@@ -184,41 +184,40 @@ function generateCounterForSignal(
   const signalType = classifyNegativeSignal(signal.value);
   const citationRef = citation ? ` [${citation}]` : "";
 
-  // Pattern: risk_signal → blostem_contrast (compressed, ≤ 30 words)
-  // All signals use generic counters to avoid raw text leakage
+  // Forceful counters: acknowledge → concrete risk → Blostem contrast
   switch (signalType) {
     case "trust_risk":
-      return `Wallet-layer fraud incidents expose partners to liability — infra-layer solutions isolate this risk${citationRef}.`;
+      return `That works early, but wallet-layer fraud incidents expose partners to liability — infra-layer models isolate you from this risk${citationRef}.`;
 
     case "financial_health":
-      return `Revenue decline in financial services signals uneven product traction — infra-layer avoids this dependency${citationRef}.`;
+      return `Revenue decline in financial services signals uneven product traction — infra-layer avoids dependency on evolving business lines${citationRef}.`;
 
     case "regulatory":
-      return `Lending + CBDC expansion adds layered compliance complexity — infra-layer handles this natively${citationRef}.`;
+      return `Expansion into lending + CBDC + cross-border flows increases regulatory surface area — infra-layer isolates compliance risk instead of inheriting it${citationRef}.`;
 
     case "reliability":
-      return `Settlement delays and service disruptions compound at scale — infra-layer provides SLA-backed predictability${citationRef}.`;
+      return `Settlement delays and service disruptions compound at scale — infra-layer provides SLA-backed predictability for merchant settlements${citationRef}.`;
 
     case "strategy_drift":
-      return `Product diversification dilutes focus — infra-layer ensures long-term platform alignment${citationRef}.`;
+      return `Product diversification dilutes focus — infra-layer ensures long-term platform alignment for BFSI products${citationRef}.`;
 
     default: {
       const normalizedType = signal.normalizedType || "general";
 
       if (normalizedType === "pricing_complaint") {
-        return `Pricing complexity compounds with volume (MDR + settlement + add-ons) — infra pricing is fixed and predictable${citationRef}.`;
+        return `MDR + settlement layers compound costs at volume — infra-layer provides predictable B2B pricing without transaction overhead${citationRef}.`;
       }
       if (normalizedType === "support_issue") {
-        return `Generic support delays escalate for BFSI compliance — infra-layer provides BFSI-native team${citationRef}.`;
+        return `Generic support delays escalate for BFSI compliance — infra-layer provides BFSI-native team and faster resolution${citationRef}.`;
       }
       if (normalizedType === "integration_issue") {
-        return `Each bank partnership compounds integration overhead — single API handles multi-bank complexity${citationRef}.`;
+        return `Each bank partnership compounds integration overhead — infra-layer's single API handles multi-bank complexity${citationRef}.`;
       }
       if (normalizedType === "onboarding_delay") {
-        return `BFSI compliance timelines add weeks to onboarding — infra-layer is designed for speed${citationRef}.`;
+        return `BFSI compliance timelines add weeks to onboarding — infra-layer's standardized flow is designed for speed${citationRef}.`;
       }
 
-      return `Wallet complexity compounds at scale — infra-layer removes cost and compliance unpredictability${citationRef}.`;
+      return `Transaction complexity compounds at scale — infra-layer removes cost and compliance unpredictability for BFSI products${citationRef}.`;
     }
   }
 }
@@ -227,57 +226,37 @@ function generateAggressiveLandmine(signal: Signal): string | null {
   const signalType = classifyNegativeSignal(signal.value);
   const citation = signal.citationIds[0] ? ` [${signal.citationIds[0]}]` : "";
 
-  // Clean signal text: remove markdown, URLs, headings
-  const rawSnippet = signal.value
-    .replace(/^##+\s*/gm, "") // Remove markdown headings
-    .replace(/https?:\/\/\S+/g, "") // Remove URLs
-    .replace(/\[.*?\]/g, "") // Remove brackets (citations)
-    .slice(0, 60) // Take first 60 chars
-    .replace(/\s+\S*$/, "") // Trim to word boundary
-    .trim();
-
-  // If snippet is too short or looks like garbage, use generic
-  if (rawSnippet.length < 10 || /^[\d\s.,]+$/.test(rawSnippet)) {
-    switch (signalType) {
-      case "trust_risk":
-        return `How are you isolating fraud liability given wallet-related incidents?${citation}`;
-      case "regulatory":
-        return `What's your contingency if they face RBI action?${citation}`;
-      case "financial_health":
-        return `How does financial instability affect your vendor confidence?${citation}`;
-      default:
-        return null;
-    }
-  }
-
-  // Signal-specific landmines — sharp, citation-backed
+  // Sharp, forceful landmine questions — pain-driven, no abstraction
   switch (signalType) {
     case "trust_risk":
-      return `How are you isolating fraud liability given ${rawSnippet}?${citation}`;
+      return `How do you isolate settlement risk when fraud incidents hit payment flows?${citation}`;
 
     case "financial_health":
-      return `How does ${rawSnippet} affect your confidence in their long-term viability?${citation}`;
+      return `What happens to your margins when adjacent expansions introduce execution risk?${citation}`;
 
     case "regulatory":
-      return `What's your contingency if they face RBI action for ${rawSnippet}?${citation}`;
+      return `How do you handle multi-bank compliance when regulatory surface area expands?${citation}`;
 
     case "reliability":
-      return `What's your SLA-backed recourse when ${rawSnippet} impacts settlement?${citation}`;
+      return `What SLA-backed recourse do you have when payment disruptions hit settlements?${citation}`;
 
     case "strategy_drift":
-      return `How does ${rawSnippet} affect your confidence in their platform focus?${citation}`;
+      return `How do you trust platform investment when product focus keeps shifting?${citation}`;
 
-    default:
-      if (signal.normalizedType === "pricing_complaint") {
-        return `What's your effective per-txn cost after MDR + settlement + add-ons at current volume?`;
+    default: {
+      const normalizedType = signal.normalizedType || "general";
+
+      if (normalizedType === "pricing_complaint") {
+        return `How do you manage margin compression as MDR + settlement fees scale with volume?`;
       }
-      if (signal.normalizedType === "integration_issue") {
-        return `How many FTEs maintain bank integrations today, and what happens when APIs change?`;
+      if (normalizedType === "integration_issue") {
+        return `How many FTEs maintain bank integrations, and what's the cost when APIs change?`;
       }
-      if (signal.normalizedType === "support_issue") {
-        return `Who handles BFSI compliance questions — the same team as your general support?`;
+      if (normalizedType === "support_issue") {
+        return `Who handles BFSI compliance questions when issues escalate?${citation}`;
       }
       return null;
+    }
   }
 }
 
@@ -474,11 +453,24 @@ export function deriveDealPrimitives(
 
   console.log(`[DealPrimitives] Generated: ${objection_handling.length} objections`);
 
-  // Quick dismisses
-  const quick_dismisses = [
-    generateTypeSpecificDismiss(competitor, compType, signals),
-    ...generateAttacksFromSignals(signals).slice(0, 2),
-  ].filter((v, i, a) => a.indexOf(v) === i).slice(0, 3);
+  // Quick dismisses - max 2, pain-driven
+  const primaryDismiss = generateTypeSpecificDismiss(competitor, compType, signals);
+  const typeDismiss = (() => {
+    switch (compType) {
+      case "wallet":
+        return `MDR + settlement fees compound unpredictably as wallet volumes scale.`;
+      case "gateway":
+        return `Gateway handles payments, not multi-bank reconciliation or compliance complexity.`;
+      case "NBFC":
+        return `Lending margin models layer regulatory overhead your team absorbs.`;
+      case "infra":
+        return `Integration complexity doesn't equal BFSI compliance capability.`;
+      default:
+        return null;
+    }
+  })();
+
+  const quick_dismisses = [primaryDismiss, typeDismiss].filter((v): v is string => v !== null).slice(0, 2);
 
   // Why we win (outcome-focused)
   const whyWeWin = [
@@ -527,8 +519,9 @@ export function deriveDealPrimitives(
   }
 
   if (landmines.length === 0) {
-    landmines.push("How are you handling multi-bank reconciliation today? What's your current settlement timeline?");
-    landmines.push("What's your compliance overhead per bank partnership? How does that scale as you add more banks?");
+    landmines.push("How do you handle reconciliation across multiple bank settlement flows today?");
+    landmines.push("What happens to your margins when MDR + gateway fees scale with volume?");
+    landmines.push("How do you manage compliance overhead as you add more bank partnerships?");
   }
 
   // FUD responses
@@ -558,7 +551,7 @@ export function deriveDealPrimitives(
   // Category contrast
   const layerDescriptions: Record<CompetitorType, string> = {
     wallet: "wallet/payment layer",
-    gateway: "payment gateway",
+    gateway: "payment gateway / payment orchestration layer",
     infra: "integration layer",
     NBFC: "lending/NBFC layer",
     unknown: "BFSI solution",

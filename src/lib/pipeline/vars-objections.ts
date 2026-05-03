@@ -97,7 +97,9 @@ export async function generateVarsAndObjections(
 
   const citationsList = citations.map((c) => `[${c.id}] ${c.title} (${c.source})`).join("\n");
 
-  const prompt = `Create VARS sales positioning for Blostem vs a competitor.
+  const prompt = `Create VARS sales positioning for Blostem vs a fintech competitor.
+
+CONTEXT: Blostem is BFSI infrastructure (FD/RD/banking products), not a payment gateway. The competitor likely serves payment/payment orchestration use cases.
 
 COMPETITOR INTELLIGENCE:
 - Positioning: ${intelligence.positioning?.tagline || "Payment processing company"}
@@ -108,10 +110,17 @@ BLOSTEM CONTEXT:
 - Strengths: ${blostemProfile.strengths.join("; ")}
 - Differentiators: ${blostemProfile.differentiators.join("; ")}
 
+CATEGORY-AWARE VARS RULES:
+- Validate: Why prospects choose the competitor for payment/payment orchestration needs
+- Acknowledge: What they do well in the payment layer
+- Reframe: Where payment-layer complexity creates hidden costs (MDR, settlement, reconciliation)
+- Specify: How infra-layer removes payment complexity for BFSI products
+
 CRITICAL COUNTER RULES:
 - All counters MUST include [citation-N] references where N is a valid citation ID from the CITATIONS section
 - Counters must reference real customer pain points from signals, not generic statements
-- Example: "While [competitor] appears cheaper, Indian merchants report hidden MDR fees [citation-2] that compound at scale"
+- Structure: acknowledge → concrete risk (signal-backed) → Blostem contrast
+- Example: "That works early, but as volumes grow MDR + settlement layers compound costs and reconciliation overhead — infra models remove both"
 
 IMPORTANT PRICING RULES:
 - Do NOT cite specific percentage fees (e.g., "9%", "8%") unless they appear in a citation
@@ -166,17 +175,44 @@ Generate VARS + objection handling. Return ONLY JSON:
 
   console.error(`[Vars] Failed to parse JSON`);
 
+  // Category-aware fallback VARS
+  const isGateway = intelligence.pricing_posture?.model?.includes("transaction") ||
+    (intelligence.positioning?.tagline || "").toLowerCase().includes("gateway");
+
+  if (isGateway) {
+    return {
+      vars_layer: {
+        validate: `Prospects choose Razorpay for fast payment setup and broad UPI/card coverage.`,
+        acknowledge: `Strong gateway with solid developer experience and wide payment ecosystem reach.`,
+        reframe: `Transaction + MDR pricing compounds at scale and adds reconciliation overhead for multi-bank BFSI products.`,
+        specify: `Blostem replaces payment-layer complexity with infra-layer control — predictable costs, single API, native BFSI compliance.`,
+      },
+      objection_handling: [
+        {
+          objection: "We already use Razorpay",
+          counter: `That works early, but at scale MDR + settlement layers increase total cost and reconciliation overhead — infra models remove both cost unpredictability and operational drag.`,
+          evidence: "citation-1",
+        },
+        {
+          objection: "They seem cheaper",
+          counter: `Perceived competitive pricing at low volume, but costs scale with MDR + settlement layers — infra-layer provides predictable B2B pricing.`,
+          evidence: "citation-1",
+        },
+      ],
+    };
+  }
+
   return {
     vars_layer: {
-      validate: `Prospects considering ${intelligence.positioning?.tagline || "this competitor"} typically evaluate pricing and ease of use.`,
-      acknowledge: `${intelligence.positioning?.tagline || "This competitor"} is recognized for developer experience.`,
-      reframe: `However, ${intelligence.pricing_posture?.opacity === "opaque" ? "their pricing model lacks transparency" : "there may be hidden costs"} that could impact total cost.`,
-      specify: `Blostem provides transparent pricing, faster onboarding, and purpose-built BFSI compliance.`,
+      validate: `Prospects considering ${intelligence.positioning?.tagline || "this competitor"} evaluate pricing and ease of use.`,
+      acknowledge: `${intelligence.positioning?.tagline || "This competitor"} offers payment/payment orchestration capabilities.`,
+      reframe: `Transaction pricing plus settlement complexity compounds at scale for BFSI products.`,
+      specify: `Blostem provides infra-layer control with predictable costs, single API integration, and native BFSI compliance.`,
     },
     objection_handling: [
       {
         objection: "They seem cheaper",
-        counter: `While competitors may appear cost-effective, customers report hidden fees and unpredictable pricing. Blostem offers transparent per-seat pricing with no hidden costs.`,
+        counter: `Pricing complexity compounds at volume — infra-layer provides predictable B2B pricing without MDR overhead.`,
         evidence: "citation-1",
       },
     ],

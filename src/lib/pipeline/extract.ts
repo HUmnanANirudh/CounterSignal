@@ -136,9 +136,9 @@ export async function extract(
 CRITICAL RULES - VIOLATION = REJECTED OUTPUT:
 1. DIFFERENTIATORS: Must be product capabilities or GTM advantages, NOT credentials (funding, G2 ratings, unicorn status). E.g. "API-first architecture" NOT "unicorn status".
 2. TAGLINE: Must describe what the competitor actually does as a product, NOT generic descriptors. E.g. "Payment gateway for Indian businesses" NOT "a leading fintech platform".
-3. PRICING MODEL: Must be ONE of: subscription, transaction, freemium, custom, unknown. NOT multiple merged models.
+3. PRICING MODEL: Must be ONE of: subscription, transaction, transaction+MDR, transaction+volume-linked, freemium, custom, unknown. For wallets/gateways use "transaction+MDR" not just "transaction".
 4. ENTRY PRICE:
-   - For transaction models: must be percentage + fixed fee (e.g., "2.9% + $0.30"). NEVER a fixed dollar amount alone.
+   - For transaction models: must be percentage + fixed fee (e.g., "2.9% + ₹0.30"). NEVER a fixed dollar amount alone.
    - If no clear pricing found: set to "opaque". Do NOT guess.
 5. CATEGORIES MUST BE SEPARATE: payments pricing, issuing fees, and subscription plans are DIFFERENT. Never merge them.
 6. INVALID PATTERNS (will cause rejection):
@@ -147,6 +147,7 @@ CRITICAL RULES - VIOLATION = REJECTED OUTPUT:
    - Multiple conflicting dollar amounts in entryPrice
 
 7. CUSTOMER TRUTHS MUST INCLUDE: Include any fraud incidents, regulatory issues, financial instability signals as keyComplaints. Example: "₹40Cr fraud incident" should appear in keyComplaints, not just negatives.
+8. REVIEW SENTIMENT INTERPRETATION: 3-3.9 stars = "moderate/mixed sentiment" NOT "high satisfaction". 4+ stars = "positive sentiment". Below 3 = "negative sentiment". Do not overstate satisfaction.
 
 Data:
 ${processedData.raw_content.slice(0, MAX_CONTEXT_CHARS)}
@@ -157,7 +158,7 @@ Reviews: ${reviewInfo}
 Negative signals (fraud/regulatory/financial): ${negativeSignalsInfo}
 
 JSON (only one model, one entryPrice):
-{"positioning":{"tagline":"string","targetSegments":[],"differentiators":[]},"pricing_posture":{"model":"subscription|transaction|freemium|custom|unknown","entryPrice":"string","tiers":[],"opacity":"clear|opaque"},"recent_moves":[],"customer_truths":{"positives":[],"negatives":[],"keyComplaints":[]}}
+{"positioning":{"tagline":"string","targetSegments":[],"differentiators":[]},"pricing_posture":{"model":"subscription|transaction|transaction+MDR|transaction+volume-linked|freemium|custom|unknown","entryPrice":"string","tiers":[],"opacity":"clear|opaque"},"recent_moves":[],"customer_truths":{"positives":[],"negatives":[],"keyComplaints":[]}}
 
 Return ONLY the JSON object. No markdown, no explanation.`;
 
