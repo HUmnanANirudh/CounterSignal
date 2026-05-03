@@ -6,7 +6,7 @@ import { deriveSignals, calculateConfidence } from "./signals";
 import { generateVarsAndObjections } from "./vars-objections";
 import { renderMarkdown } from "./render";
 import { sanitizeForAE } from "./sanitize";
-import { detectCompetitorCategory, getPricingModelForCategory, type MarketRole } from "./classify";
+import { detectCompetitorCategory, getPricingModelForCategory } from "./classify";
 import type { CompetitorCategory } from "./classify";
 import { deriveDealPrimitives, type CompetitorType } from "./deal-primitives";
 
@@ -106,7 +106,7 @@ export async function runPipeline(
 
       // Import the supply side context generator
       const { generateSupplySideContext } = await import("./classify");
-      const supplyContext = generateSupplySideContext(competitor, classification, citations);
+      const supplyContext = generateSupplySideContext(competitor, classification);
 
       const supplyCard: Battlecard = {
         competitor,
@@ -169,7 +169,7 @@ export async function runPipeline(
       console.log(`[Pipeline] ${competitor} is NOT a competitor (${classification.category}) — generating strategic context`);
 
       const { generateStrategicContext } = await import("./classify");
-      const strategicContext = generateStrategicContext(competitor, classification, citations);
+      const strategicContext = generateStrategicContext(competitor, classification);
 
       const strategicCard: Battlecard = {
         competitor,
@@ -313,7 +313,7 @@ function renderSupplySideContext(context: SupplySideContext): string {
   }
   lines.push(``);
   lines.push(`## Why It Matters to Blostem`);
-  for (const item of context.why_it_matters_to_blostem) {
+  for (const item of context.why_it_matters) {
     lines.push(`- ${item}`);
   }
   lines.push(``);

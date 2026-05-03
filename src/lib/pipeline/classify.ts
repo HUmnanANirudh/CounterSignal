@@ -1,24 +1,33 @@
 /**
  * classify.ts — Competitor type detection + market role classification
  *
- * Rule-based classification using generic category patterns only.
- * No hardcoded company names — works for any competitor.
+ * Business model classification with capability detection:
+ * - INFRA: API/SDK rails for BFSI (account aggregator, UPI stack, mandate APIs)
+ * - PAYMENT_GATEWAY: Payment processing (gateway, checkout, merchant payments)
+ * - WALLET: Digital wallet (mobile wallet, prepaid wallet, recharge)
+ * - ISSUER: FD/RD/NBFC product issuers (fixed deposit, recurring deposit)
+ * - AGGREGATOR: Marketplace/distribution (loan marketplace, comparison)
+ * - END_PRODUCT: Neobank/business banking app (current account, neobank)
+ * - BROKER: Trading/investing (stockbroker, demat, trading platform)
  *
- * Market roles:
- * - COMPETITOR: direct substitute for Blostem (gateway, wallet, infra)
- * - NON_COMPETITOR: different category (broker, lender, aggregator)
- * - SUPPLY_SIDE: product issuers (NBFCs, FD providers)
+ * Precedence: INFRA > ISSUER > PAYMENT_GATEWAY > WALLET > END_PRODUCT > AGGREGATOR > BROKER
+ *
+ * Key distinction: WHO OWNS THE FINANCIAL PRODUCT
+ * - Issuer: YES (FD, loans)
+ * - Infra: NO (just provides API rails)
+ * - Distribution: NO (just sells/aggregates)
+ * - End product: NO (just UI, product is elsewhere)
  */
 
 export type CompetitorCategory =
-  | "PAYMENT_GATEWAY"
-  | "WALLET"
-  | "BANKING_API"
-  | "BROKER"
-  | "LENDER"
-  | "AGGREGATOR"
-  | "INSURTECH"
-  | "ISSUER"
+  | "INFRA_LAYER"      // API/SDK rails for BFSI (account aggregator, UPI stack, mandate APIs)
+  | "PAYMENT_GATEWAY"  // Payment processing (gateway, checkout, merchant payments)
+  | "WALLET"           // Digital wallet (mobile wallet, prepaid wallet, recharge)
+  | "ISSUER"           // FD/RD/NBFC product issuers (fixed deposit, recurring deposit)
+  | "AGGREGATOR"       // Marketplace (loan marketplace, comparison)
+  | "END_PRODUCT"      // Neobank (current account, neobank)
+  | "BROKER"           // Trading/investing (stockbroker, demat, trading platform)
+  | "LENDER"           // Lending platform (personal loan, business loan)
   | "UNKNOWN";
 
 export type MarketRole = "competitor" | "non_competitor" | "supply_side";
@@ -30,86 +39,146 @@ interface ClassificationResult {
   isCompetitor: boolean;
   marketRole: MarketRole;
   reasoning: string;
+  capabilityProfile: CapabilityProfile;
 }
 
-// Detection patterns — purely category-based, no hardcoded company names
-const CATEGORY_PATTERNS: Record<CompetitorCategory, Array<{ pattern: RegExp; weight: number }>> = {
-  PAYMENT_GATEWAY: [
-    { pattern: /payment\s*gateway|merchant\s*payment|payment\s*processor|checkout\s*solution/i, weight: 1.0 },
-    { pattern: /payment\s*orchestration|payment\s*stack|gateway\s*api/i, weight: 0.9 },
-    { pattern: /cross[\s-]?border\s*payment\s*aggregator/i, weight: 0.8 },
-    { pattern: /upi\s*gateway|card\s*processing/i, weight: 0.7 },
-  ],
-  WALLET: [
-    { pattern: /digital\s*wallet|mobile\s*wallet|wallet\s*balance|prepaid\s*wallet/i, weight: 1.0 },
-    { pattern: /payments?\s*bank|digital\s*payments\s*platform/i, weight: 0.85 },
-    { pattern: /bill\s*payment|recharge|mobile\s*recharge/i, weight: 0.6 },
-    { pattern: /qr\s*code\s*payment|upi\s*payment/i, weight: 0.5 },
-  ],
-  BANKING_API: [
-    { pattern: /banking[\s-]?as[\s-]?a[\s-]?service|baas|banking\s*api|open\s*banking/i, weight: 1.0 },
-    { pattern: /neobank|neo[\s-]?bank/i, weight: 0.7 },
-    { pattern: /fd\s*api|rd\s*api|deposit\s*api/i, weight: 0.9 },
-    { pattern: /current\s*account\s*api/i, weight: 0.6 },
-  ],
-  BROKER: [
-    { pattern: /stockbroker|brokerage\s*platform|trading\s*platform|demat\s*account/i, weight: 1.0 },
-    { pattern: /mutual\s*fund\s*investment|ipo\s*subscription|intraday\s*trading/i, weight: 0.8 },
-    { pattern: /brokerage\s*charges|per\s*trade\s*fee|equity\s*trading/i, weight: 0.7 },
-    { pattern: /derivative\s*trading|options\s*trading/i, weight: 0.6 },
-  ],
-  LENDER: [
-    { pattern: /lending\s*platform|personal\s*loan|loan\s*app|business\s*loan/i, weight: 1.0 },
-    { pattern: /credit\s*card|loan\s*disbursement/i, weight: 0.7 },
-    { pattern: /loan\s*against\s*mutual\s*fund/i, weight: 0.8 },
-    { pattern: /bnpl|buy\s*now\s*pay\s*later/i, weight: 0.7 },
-  ],
-  AGGREGATOR: [
-    { pattern: /loan\s*marketplace|credit\s*marketplace|compare\s*(loans?|insurance|financial)/i, weight: 1.0 },
-    { pattern: /financial\s*products?\s*(comparison|aggregator|marketplace)/i, weight: 0.95 },
-    { pattern: /insurance\s*aggregator|insurance\s*comparison/i, weight: 0.9 },
-    { pattern: /credit\s*score\s*service|free\s*credit\s*score/i, weight: 0.8 },
-    { pattern: /rate\s*compare|loan\s*comparison|loan\s*quotes/i, weight: 0.75 },
-    { pattern: /marketplace.*loan|loan.*marketplace|loan\s*partner/i, weight: 0.7 },
-  ],
-  INSURTECH: [
-    { pattern: /insurtech|insurance\s*tech|insurance\s*platform/i, weight: 1.0 },
-    { pattern: /life\s*insurance|term\s*insurance|health\s*insurance/i, weight: 0.5 },
-    { pattern: /insurance\s*aggregator/i, weight: 0.6 },
-  ],
-  ISSUER: [
-    { pattern: /fixed\s*deposit|FD\s*interest|FD\s*rates?|\d+[%\.]?\s*p\.?a\.?\s*FD/i, weight: 1.0 },
-    { pattern: /recurring\s*deposit|RD\s*interest|RD\s*rates?/i, weight: 0.95 },
-    { pattern: /nbfc.*deposit|deposit\s*taking.*nbfc/i, weight: 0.9 },
-    { pattern: /crisil\s*rating|icra\s*rating|credit\s*rating.*nbfc/i, weight: 0.85 },
-    { pattern: /deposit\s*products?|fd\s*products?|rd\s*products?/i, weight: 0.8 },
-    { pattern: /housing\s*finance|home\s*loan|nbfc.*lending/i, weight: 0.75 },
-    { pattern: /deposit\s*issuers?|fd\s*issuers?|nbfc.*issuer/i, weight: 0.7 },
-  ],
-  UNKNOWN: [],
-};
+interface CapabilityProfile {
+  hasAPI: boolean;
+  hasInfraRails: boolean;
+  ownsFinancialProduct: boolean;
+  isMarketplace: boolean;
+  isEndUserApp: boolean;
+  hasPaymentProcessing: boolean;
+  hasWalletBalance: boolean;
+}
+
+// Capability extraction - detects WHAT the company does
+function extractCapabilities(combined: string): CapabilityProfile {
+  const lower = combined.toLowerCase();
+
+  // INFRA signals: API/SDK + BFSI rails
+  const hasAPI = /\bapi\b|\bsdk\b|\bdeveloper\s*(?:platform|suite|tools)\b/i.test(lower);
+  const hasInfraRails = /\baccount\s*aggregator\b|\bAA\b|\bupi\s*stack\b|\bbanking\s*rails\b|\bmandate\b|\baadhaar\s*pay\b|\baccount-to-account\b/i.test(lower);
+  const hasOrchestration = /\borchestration\b|\bembed\b|\binfra\b|\binfrastructure\b/i.test(lower);
+
+  // PRODUCT signals: owns FD/loans/insurance
+  const hasFixedDeposit = /\bfixed\s*deposit\b|\bFD\s*interest\b/i.test(lower);
+  const hasLending = /\bpersonal\s*loan\b|\bbusiness\s*loan\b|\bloan\s*disbursement\b|\bcredit\s*card\b/i.test(lower);
+  const hasInsurance = /\blife\s*insurance\b|\bterm\s*insurance\b|\bhealth\s*insurance\b/i.test(lower);
+
+  // MARKETPLACE signals
+  const hasMarketplace = /\bloan\s*marketplace\b|\bcredit\s*marketplace\b|\bcompare\s*(?:loans?|insurance)\b|\baggregator\b.*\bloan\b/i.test(lower);
+
+  // END PRODUCT signals: consumer/business banking app
+  const hasEndUserApp = /\bbusiness\s*account\b|\bcurrent\s*account\b|\bneobank\b|\bapp\s*for\s*smes\b|\bbanking\s*app\b/i.test(lower);
+
+  // PAYMENT signals
+  const hasPaymentProcessing = /\bpayment\s*gateway\b|\bcheckout\b|\bmerchant\s*payment\b|\bcard\s*processing\b|\bupi\s*gateway\b/i.test(lower);
+
+  // WALLET signals
+  const hasWalletBalance = /\bdigital\s*wallet\b|\bmobile\s*wallet\b|\bwallet\s*balance\b|\bprepaid\s*wallet\b|\brecharge\b|\bbill\s*payment\b/i.test(lower);
+
+  return {
+    hasAPI: hasAPI || hasOrchestration,
+    hasInfraRails,
+    ownsFinancialProduct: hasFixedDeposit || hasLending || hasInsurance,
+    isMarketplace: hasMarketplace,
+    isEndUserApp: hasEndUserApp,
+    hasPaymentProcessing,
+    hasWalletBalance,
+  };
+}
+
+// INFRA detection - API-first BFSI infrastructure
+const INFRA_SIGNALS: Array<{ pattern: RegExp; weight: number }> = [
+  { pattern: /\baccount\s*aggregator\b/i, weight: 1.0 },
+  { pattern: /\bAA\b.*\bapi\b|\bapi\b.*\bAA\b/i, weight: 0.95 },
+  { pattern: /\bupi\s*stack\b/i, weight: 0.95 },
+  { pattern: /\bbanking\s*rails\b/i, weight: 0.95 },
+  { pattern: /\bfinancial\s*account\b/i, weight: 0.9 },
+  { pattern: /\bmandate\s*api\b/i, weight: 0.9 },
+  { pattern: /\bAPI\s*(?:for|to)\s*(?:banking|payments|financial)\b/i, weight: 0.85 },
+  { pattern: /\bSDK\b.*\bbanking\b/i, weight: 0.85 },
+  { pattern: /\bembed\b.*\bfintech\b/i, weight: 0.8 },
+  { pattern: /\borchestration\b.*\bpayment\b/i, weight: 0.8 },
+];
+
+// Payment gateway patterns
+const PAYMENT_GATEWAY_SIGNALS: Array<{ pattern: RegExp; weight: number }> = [
+  { pattern: /\bpayment\s*gateway\b/i, weight: 1.0 },
+  { pattern: /\bmerchant\s*payment\b/i, weight: 0.95 },
+  { pattern: /\bpayment\s*processor\b/i, weight: 0.95 },
+  { pattern: /\bcheckout\s*solution\b/i, weight: 0.9 },
+  { pattern: /\bcard\s*processing\b/i, weight: 0.8 },
+];
+
+// Wallet patterns
+const WALLET_SIGNALS: Array<{ pattern: RegExp; weight: number }> = [
+  { pattern: /\bdigital\s*wallet\b/i, weight: 1.0 },
+  { pattern: /\bmobile\s*wallet\b/i, weight: 0.95 },
+  { pattern: /\bprepaid\s*wallet\b/i, weight: 0.95 },
+  { pattern: /\bwallet\s*balance\b/i, weight: 0.8 },
+];
+
+// END_PRODUCT patterns
+const END_PRODUCT_SIGNALS: Array<{ pattern: RegExp; weight: number }> = [
+  { pattern: /\bbusiness\s*account\b/i, weight: 1.0 },
+  { pattern: /\bcurrent\s*account\b/i, weight: 0.95 },
+  { pattern: /\bneobank\b/i, weight: 0.95 },
+  { pattern: /\bapp\s*for\s*smes\b/i, weight: 0.9 },
+  { pattern: /\bbanking\s*app\b/i, weight: 0.85 },
+];
+
+// Aggregator patterns
+const AGGREGATOR_SIGNALS: Array<{ pattern: RegExp; weight: number }> = [
+  { pattern: /\bloan\s*marketplace\b/i, weight: 1.0 },
+  { pattern: /\bcredit\s*marketplace\b/i, weight: 1.0 },
+  { pattern: /\bcompare\s*(?:loans?|insurance|financial\s*products?)/i, weight: 0.95 },
+  { pattern: /\bfinancial\s*products?\s*comparison\b/i, weight: 0.95 },
+  { pattern: /\bcredit\s*score\s*service\b/i, weight: 0.85 },
+];
+
+// Issuer patterns (FD/NBFC providers)
+const ISSUER_SIGNALS: Array<{ pattern: RegExp; weight: number }> = [
+  { pattern: /\bfixed\s*deposit\b/i, weight: 1.0 },
+  { pattern: /\bFD\s*interest\b/i, weight: 1.0 },
+  { pattern: /\bRD\s*interest\b/i, weight: 0.95 },
+  { pattern: /\bnbfc.*\bdeposit\b|\bdeposit\b.*\bnbfc/i, weight: 0.9 },
+  { pattern: /\bcrisil\s*(?:a|b|c|d|aa)/i, weight: 0.85 },
+];
+
+// Helper to score a category
+function scoreCategory(signals: Array<{ pattern: RegExp; weight: number }>, text: string): number {
+  let score = 0;
+  for (const { pattern, weight } of signals) {
+    if (pattern.test(text)) {
+      score += weight;
+    }
+  }
+  return score;
+}
 
 // Categories that compete with Blostem (infra layer)
 const COMPETITOR_CATEGORIES: CompetitorCategory[] = [
+  "INFRA_LAYER",
   "PAYMENT_GATEWAY",
   "WALLET",
-  "BANKING_API",
 ];
 
 // Categories that are supply-side (product issuers)
-// These are partners/supply layer, not competitors
 const SUPPLY_SIDE_CATEGORIES: CompetitorCategory[] = [
   "ISSUER",
 ];
 
-// Categories that are non-competitors (different market segment)
+// Categories that are non-competitors
 const NON_COMPETITOR_CATEGORIES: CompetitorCategory[] = [
+  "AGGREGATOR",
+  "END_PRODUCT",
   "BROKER",
   "LENDER",
-  "AGGREGATOR",
-  "INSURTECH",
 ];
 
+// Classification with capability override and precedence
 export function detectCompetitorCategory(
   competitorName: string,
   rawContent: string,
@@ -117,54 +186,108 @@ export function detectCompetitorCategory(
 ): ClassificationResult {
   const combined = `${tagline} ${rawContent} ${competitorName}`.toLowerCase();
 
+  // Step 1: Extract capabilities (deterministic)
+  const capabilities = extractCapabilities(combined);
+
+  // Step 2: Score each category
   const scores: Record<CompetitorCategory, number> = {
-    PAYMENT_GATEWAY: 0,
-    WALLET: 0,
-    BANKING_API: 0,
+    INFRA_LAYER: scoreCategory(INFRA_SIGNALS, combined),
+    PAYMENT_GATEWAY: scoreCategory(PAYMENT_GATEWAY_SIGNALS, combined),
+    WALLET: scoreCategory(WALLET_SIGNALS, combined),
+    ISSUER: scoreCategory(ISSUER_SIGNALS, combined),
+    AGGREGATOR: scoreCategory(AGGREGATOR_SIGNALS, combined),
+    END_PRODUCT: scoreCategory(END_PRODUCT_SIGNALS, combined),
     BROKER: 0,
     LENDER: 0,
-    AGGREGATOR: 0,
-    INSURTECH: 0,
-    ISSUER: 0,
     UNKNOWN: 0,
   };
 
-  const signals: string[] = [];
-
-  for (const [category, patterns] of Object.entries(CATEGORY_PATTERNS)) {
-    if (category === "UNKNOWN") continue;
-
-    for (const { pattern, weight } of patterns) {
-      if (pattern.test(combined)) {
-        scores[category as CompetitorCategory] += weight;
-        signals.push(`${category}:${pattern.source}`);
-      }
-    }
+  // Broker detection
+  if (/\bstockbroker\b|\bbrokerage\b|\btrading\s*platform\b|\bdemat\b/i.test(combined)) {
+    scores.BROKER = 0.85;
   }
+
+  // Lender detection
+  if (/\blending\s*platform\b|\bpersonal\s*loan\b|\bloan\s*app\b/i.test(combined)) {
+    scores.LENDER = 0.85;
+  }
+
+  // Step 3: Collect signals
+  const signals: string[] = [];
+  const addSignal = (cat: string, p: RegExp) => {
+    if (p.test(combined)) signals.push(`${cat}:${p.source.slice(0, 20)}`);
+  };
+
+  INFRA_SIGNALS.forEach(s => addSignal("INFRA", s.pattern));
+  PAYMENT_GATEWAY_SIGNALS.forEach(s => addSignal("GATEWAY", s.pattern));
+  WALLET_SIGNALS.forEach(s => addSignal("WALLET", s.pattern));
+  ISSUER_SIGNALS.forEach(s => addSignal("ISSUER", s.pattern));
+  AGGREGATOR_SIGNALS.forEach(s => addSignal("AGGREGATOR", s.pattern));
+  END_PRODUCT_SIGNALS.forEach(s => addSignal("END_PRODUCT", s.pattern));
+
+  // Step 4: CAPABILITY OVERRIDES
+
+  // Override A: If has infra rails + API, force INFRA (account aggregator pattern)
+  if (capabilities.hasInfraRails && (capabilities.hasAPI || scores.INFRA_LAYER >= 0.5)) {
+    scores.INFRA_LAYER = Math.max(scores.INFRA_LAYER, 1.5);
+    signals.push("cap:infra_rails_override");
+  }
+
+  // Override B: If owns financial product, it's ISSUER not infra
+  if (capabilities.ownsFinancialProduct && scores.ISSUER >= 0.5) {
+    scores.ISSUER = Math.max(scores.ISSUER, 1.5);
+    scores.INFRA_LAYER = 0;
+    signals.push("cap:owns_product_override");
+  }
+
+  // Override C: Marketplace overrides (loan marketplace pattern)
+  if (capabilities.isMarketplace && !capabilities.ownsFinancialProduct) {
+    scores.AGGREGATOR = Math.max(scores.AGGREGATOR, 1.2);
+    signals.push("cap:marketplace_override");
+  }
+
+  // Override D: End user app overrides infra (neobank pattern)
+  if (capabilities.isEndUserApp && !capabilities.hasAPI) {
+    scores.END_PRODUCT = Math.max(scores.END_PRODUCT, 1.2);
+    scores.INFRA_LAYER = 0;
+    signals.push("cap:end_user_app_override");
+  }
+
+  // Step 5: Find winner by precedence
+  // INFRA > ISSUER > GATEWAY > WALLET > END_PRODUCT > AGGREGATOR > BROKER > LENDER
+  const precedence: CompetitorCategory[] = [
+    "INFRA_LAYER", "ISSUER", "PAYMENT_GATEWAY", "WALLET", "END_PRODUCT", "AGGREGATOR", "BROKER", "LENDER", "UNKNOWN"
+  ];
 
   let maxScore = 0;
   let maxCategory: CompetitorCategory = "UNKNOWN";
 
-  for (const [category, score] of Object.entries(scores)) {
-    if (category === "UNKNOWN") continue;
+  for (const cat of precedence) {
+    const score = scores[cat] || 0;
     if (score > maxScore) {
       maxScore = score;
-      maxCategory = category as CompetitorCategory;
+      maxCategory = cat;
     }
   }
 
-  // Fallback: if UNKNOWN, try to infer best fit from signals
-  if (maxCategory === "UNKNOWN" || maxScore < 0.6) {
-    // Soft classification fallback for UNKNOWN
-    const fallbackCategory = inferBestFitFromSignals(combined, competitorName);
-    if (fallbackCategory !== "UNKNOWN") {
-      maxCategory = fallbackCategory;
-      maxScore = 0.5; // Lower confidence for fallback
-      signals.push(`fallback:${fallbackCategory}`);
+  // Step 6: Fallback - capability-based
+  if (maxScore < 0.5) {
+    if (capabilities.hasAPI && !capabilities.ownsFinancialProduct && !capabilities.isMarketplace && !capabilities.isEndUserApp) {
+      maxCategory = "INFRA_LAYER";
+      maxScore = 0.6;
+      signals.push("fallback:api_infra");
+    } else if (capabilities.ownsFinancialProduct) {
+      maxCategory = "ISSUER";
+      maxScore = 0.6;
+      signals.push("fallback:owns_product");
+    } else if (capabilities.isMarketplace) {
+      maxCategory = "AGGREGATOR";
+      maxScore = 0.6;
+      signals.push("fallback:marketplace");
     }
   }
 
-  const isCompetitor = COMPETITOR_CATEGORIES.includes(maxCategory) && maxScore >= 0.6;
+  const isCompetitor = COMPETITOR_CATEGORIES.includes(maxCategory) && maxScore >= 0.5;
   const isSupplySide = SUPPLY_SIDE_CATEGORIES.includes(maxCategory);
   const isNonCompetitor = NON_COMPETITOR_CATEGORIES.includes(maxCategory);
 
@@ -175,93 +298,52 @@ export function detectCompetitorCategory(
 
   let reasoning = "";
   if (maxScore === 0) {
-    reasoning = "No category signals detected — using fallback inference";
-    // Infer anyway from company name patterns
-    const inferred = inferBestFitFromSignals(combined, competitorName);
-    if (inferred !== "UNKNOWN") {
-      maxCategory = inferred;
-      marketRole = SUPPLY_SIDE_CATEGORIES.includes(inferred) ? "supply_side" :
-                   COMPETITOR_CATEGORIES.includes(inferred) ? "competitor" : "non_competitor";
-      reasoning = `${inferred} inferred from context`;
-    }
+    reasoning = "No clear signals — defaulting to non-competitor";
+    maxCategory = "UNKNOWN";
+    marketRole = "non_competitor";
   } else if (isCompetitor) {
-    reasoning = `${maxCategory} detected (score: ${maxScore.toFixed(1)}) — direct competitor`;
+    reasoning = `${maxCategory} (score: ${maxScore.toFixed(1)}) — ${roleDesc(maxCategory)}`;
   } else if (isSupplySide) {
-    reasoning = `${maxCategory} detected (score: ${maxScore.toFixed(1)}) — supply-side (partner)`;
+    reasoning = `${maxCategory} (score: ${maxScore.toFixed(1)}) — supply-side partner`;
   } else {
-    reasoning = `${maxCategory} detected (score: ${maxScore.toFixed(1)}) — not a Blostem competitor`;
+    reasoning = `${maxCategory} (score: ${maxScore.toFixed(1)}) — non-competitor (${roleDesc(maxCategory)})`;
   }
 
   return {
     category: maxCategory,
     confidence: Math.min(maxScore, 1.0),
-    signals: signals.slice(0, 5),
+    signals: signals.slice(0, 6),
     isCompetitor,
     marketRole,
     reasoning,
+    capabilityProfile: capabilities,
   };
 }
 
-// Fallback inference when no category scores above threshold
-function inferBestFitFromSignals(combined: string, competitorName: string): CompetitorCategory {
-  const nameLower = competitorName.toLowerCase();
-
-  // ISSUER signals: FD/NBFC providers
-  if (/fixed\s*deposit|recurring\s*deposit|FD|RD|interest\s*rate/i.test(combined) ||
-      /nbfc|housing\s*finance|deposit\s*taking/i.test(combined) ||
-      /\d+\s*%\s*(p\.?a\.?|per\s*annum)/i.test(combined)) {
-    return "ISSUER";
+function roleDesc(cat: CompetitorCategory): string {
+  switch (cat) {
+    case "INFRA_LAYER": return "BFSI API/SDK rails (direct competitor)";
+    case "PAYMENT_GATEWAY": return "payment processing";
+    case "WALLET": return "digital wallet";
+    case "ISSUER": return "FD/RD product issuer (partner)";
+    case "AGGREGATOR": return "marketplace/distribution";
+    case "END_PRODUCT": return "neobank/business app";
+    case "BROKER": return "trading/investing platform";
+    case "LENDER": return "lending platform";
+    default: return "unclassified";
   }
-
-  // AGGREGATOR signals: marketplace/comparison
-  if (/loan\s*marketplace|credit\s*marketplace|compare\s*(loans?|insurance)/i.test(combined) ||
-      /financial\s*products?\s*(comparison|aggregator)/i.test(combined) ||
-      /credit\s*score\s*service/i.test(combined)) {
-    return "AGGREGATOR";
-  }
-
-  // LENDER signals
-  if (/lending|loan\s*app|personal\s*loan|business\s*loan|bnpl/i.test(combined)) {
-    return "LENDER";
-  }
-
-  // PAYMENT_GATEWAY signals
-  if (/payment\s*gateway|merchant\s*payment|upi\s*gateway|checkout/i.test(combined)) {
-    return "PAYMENT_GATEWAY";
-  }
-
-  // WALLET signals
-  if (/digital\s*wallet|mobile\s*wallet|prepaid\s*wallet|upi\s*payment/i.test(combined)) {
-    return "WALLET";
-  }
-
-  // BROKER signals
-  if (/stockbroker|brokerage|trading\s*platform|demat/i.test(combined)) {
-    return "BROKER";
-  }
-
-  // INSURTECH signals
-  if (/insurance|insurtech|policy/i.test(combined) && /marketplace|comparison|platform/i.test(combined)) {
-    return "INSURTECH";
-  }
-
-  return "UNKNOWN";
 }
 
-export function isBlostemCompetitor(category: CompetitorCategory): boolean {
-  return COMPETITOR_CATEGORIES.includes(category);
-}
-
-export function getPricingModelForCategory(category: CompetitorCategory): string {
-  switch (category) {
-    case "BROKER": return "brokerage (per-trade / zero-brokerage segments)";
-    case "PAYMENT_GATEWAY": return "transaction + MDR + settlement-based (volume-linked)";
+export function getPricingModelForCategory(cat: CompetitorCategory): string {
+  switch (cat) {
+    case "BROKER": return "brokerage (per-trade)";
+    case "PAYMENT_GATEWAY": return "transaction + MDR (volume-linked)";
     case "WALLET": return "transaction + MDR + wallet-based";
-    case "BANKING_API": return "subscription + usage-based (API calls)";
-    case "LENDER": return "lending margin + transaction-based";
-    case "AGGREGATOR": return "commission-based (CPA/CPL model)";
-    case "ISSUER": return "interest spread + deposit margin (NBFC model)";
-    case "INSURTECH": return "premium-based + commission";
+    case "INFRA_LAYER": return "API usage-based (per-call)";
+    case "LENDER": return "lending margin + transaction";
+    case "AGGREGATOR": return "commission (CPA/CPL)";
+    case "ISSUER": return "interest spread + deposit margin";
+    case "END_PRODUCT": return "subscription + usage";
     default: return "opaque";
   }
 }
@@ -271,111 +353,42 @@ export interface SupplySideContext {
   category: CompetitorCategory;
   classification: string;
   what_they_offer: string[];
-  why_it_matters_to_blostem: string[];
+  why_it_matters: string[];
   opportunity: string[];
   ae_positioning: string;
   disqualify_questions: string[];
 }
 
-export function generateSupplySideContext(
-  competitor: string,
-  classification: ClassificationResult,
-  _citations: Array<{ title: string; url: string; source: string }>
-): SupplySideContext {
-  const category = classification.category;
+export function generateSupplySideContext(competitor: string, classification: ClassificationResult): SupplySideContext {
+  const cat = classification.category;
 
-  const whatTheyOffer: Record<CompetitorCategory, string[]> = {
-    ISSUER: [
+  return {
+    competitor,
+    category: cat,
+    classification: "Supply-side (product issuer) — partner, not competitor",
+    what_they_offer: cat === "ISSUER" ? [
       "Fixed deposits (FD) with competitive interest rates",
       "Recurring deposits (RD) for systematic savings",
       "Credit-rated instruments (CRISIL/ICRA rated)",
       "NBFC-backed deposit products",
-      "Often partnered with wealth platforms for FD distribution",
-    ],
-    UNKNOWN: ["Financial products and services"],
-    PAYMENT_GATEWAY: [],
-    WALLET: [],
-    BANKING_API: [],
-    BROKER: [],
-    LENDER: [],
-    AGGREGATOR: [],
-    INSURTECH: [],
+    ] : ["Financial products"],
+    why_it_matters: cat === "ISSUER" ? [
+      "Blostem can integrate with issuers to offer FD/RD products",
+      "They are product layer, not infra competition",
+      "Potential partnership for product catalog expansion",
+    ] : ["Part of the BFSI ecosystem"],
+    opportunity: cat === "ISSUER" ? [
+      "Partner to offer FD/RD products via Blostem",
+      "Expand product catalog through API integration",
+    ] : ["Explore integration opportunities"],
+    ae_positioning: cat === "ISSUER"
+      ? "You don't compete with issuers — you integrate them. Blostem can distribute their FD/RD products."
+      : "This company is part of the ecosystem, not a competitor.",
+    disqualify_questions: cat === "ISSUER" ? [
+      "Are you building infra to distribute FD/RD products?",
+      "Do you need APIs to access multiple deposit products?",
+    ] : ["Confirm what layer this company occupies"],
   };
-
-  const whyItMatters: Record<CompetitorCategory, string[]> = {
-    ISSUER: [
-      "Blostem can integrate with issuers like this to offer FD/RD products",
-      "They are part of the product layer, not competition to infra",
-      "Potential partnership for expanding Blostem's product catalog",
-      "End customers may come through Blostem to access these products",
-    ],
-    UNKNOWN: ["May be relevant to Blostem's ecosystem"],
-    PAYMENT_GATEWAY: [],
-    WALLET: [],
-    BANKING_API: [],
-    BROKER: [],
-    LENDER: [],
-    AGGREGATOR: [],
-    INSURTECH: [],
-  };
-
-  const opportunity: Record<CompetitorCategory, string[]> = {
-    ISSUER: [
-      "Partner with issuer to offer their FD/RD products via Blostem",
-      "Expand product catalog through API integration with issuers",
-      "Co-sell with issuer to wealth management platforms",
-    ],
-    UNKNOWN: ["Explore partnership opportunities"],
-    PAYMENT_GATEWAY: [],
-    WALLET: [],
-    BANKING_API: [],
-    BROKER: [],
-    LENDER: [],
-    AGGREGATOR: [],
-    INSURTECH: [],
-  };
-
-  return {
-    competitor,
-    category,
-    classification: "Supply-side (product issuer) — not a competitor",
-    what_they_offer: whatTheyOffer[category] || ["Financial products"],
-    why_it_matters_to_blostem: whyItMatters[category] || ["Part of the ecosystem"],
-    opportunity: opportunity[category] || ["Explore integration"],
-    ae_positioning: getAEPositioning(category),
-    disqualify_questions: getSupplySideDisqualify(category),
-  };
-}
-
-function getAEPositioning(category: CompetitorCategory): string {
-  switch (category) {
-    case "ISSUER":
-      return "You don't compete with issuers like this — you integrate them. Position Blostem as the infra layer that can distribute their FD/RD products.";
-    case "AGGREGATOR":
-      return "You're solving distribution. Blostem sits underneath to power the products you distribute.";
-    default:
-      return "This company is part of the ecosystem, not a competitor.";
-  }
-}
-
-function getSupplySideDisqualify(category: CompetitorCategory): string[] {
-  switch (category) {
-    case "ISSUER":
-      return [
-        "Are you building infrastructure to distribute FD/RD products?",
-        "Do you need APIs to access multiple deposit products?",
-        "Are you looking for a layer that can connect to multiple issuers?",
-      ];
-    case "AGGREGATOR":
-      return [
-        "Are you building a marketplace or the infra powering financial products?",
-        "Do you need underlying products to populate your platform?",
-      ];
-    default:
-      return [
-        "Confirm what layer of the stack this company occupies relative to Blostem",
-      ];
-  }
 }
 
 export interface StrategicContext {
@@ -390,100 +403,97 @@ export interface StrategicContext {
   disqualify_questions: string[];
 }
 
-export function generateStrategicContext(
-  competitor: string,
-  classification: ClassificationResult,
-  _citations: Array<{ title: string; url: string; source: string }>
-): StrategicContext {
-  const category = classification.category;
+export function generateStrategicContext(competitor: string, classification: ClassificationResult): StrategicContext {
+  const cat = classification.category;
 
-  // AGGREGATOR-specific content
-  const aggregatorReasons = [
-    "Aggregators sit above the product layer — they distribute, not issue",
-    "They depend on lenders/NBFCs/issuers underneath (potential Blostem customers)",
-    "Different buyer: growth/experience teams vs BFSI infra teams",
-    "Marketplace model vs infra layer — different problems solved",
-  ];
+  const whereTheyFit: Record<CompetitorCategory, string> = {
+    BROKER: "Customer-facing investing/trading platform",
+    LENDER: "Credit/lending platform",
+    AGGREGATOR: "Financial products marketplace (comparison/distribution)",
+    END_PRODUCT: "Neobank/business banking app",
+    INFRA_LAYER: "BFSI API/SDK infrastructure",
+    PAYMENT_GATEWAY: "Payment processing",
+    WALLET: "Digital wallet",
+    ISSUER: "FD/RD product issuer",
+    UNKNOWN: "Unclassified",
+  };
 
-  const aggregatorOverlaps = [
-    "May compete for end-customer attention",
-    "Could integrate infra providers like Blostem for product expansion",
-    "Platform teams may need FD/RD APIs for savings features",
-  ];
+  const overlaps: Record<CompetitorCategory, string[]> = {
+    BROKER: ["Platform teams may need FD/RD APIs for savings features"],
+    LENDER: ["Could integrate FD/RD for lending against securities"],
+    AGGREGATOR: ["May integrate infra providers like Blostem for product expansion"],
+    END_PRODUCT: ["Business banking needs may overlap with BFSI infra"],
+    INFRA_LAYER: ["Direct overlap — API/SDK infrastructure"],
+    PAYMENT_GATEWAY: ["Payment layer — may need BFSI infra for deposits"],
+    WALLET: ["Wallet + deposits overlap potential"],
+    ISSUER: ["Product issuers can be distribution partners"],
+    UNKNOWN: ["Limited overlap with BFSI infra layer"],
+  };
 
-  const aggregatorPositioning = "If you're building a marketplace, you're not choosing infra — you're choosing what powers the products in your marketplace.";
+  const positioning: Record<CompetitorCategory, string> = {
+    BROKER: "If you're building infra, you're not choosing a brokerage — you're choosing the layer underneath it.",
+    LENDER: "For deposit-backed lending, you need BFSI infra, not just a lending platform.",
+    AGGREGATOR: "If you're building a marketplace, you're not choosing infra — you're choosing what powers the products.",
+    END_PRODUCT: "Business banking app vs BFSI infra layer — different problems solved.",
+    INFRA_LAYER: "Direct infra competition — position against API/SDK capabilities.",
+    PAYMENT_GATEWAY: "Payment layer vs BFSI infra — different scope.",
+    WALLET: "Wallet vs BFSI infra — different product layer.",
+    ISSUER: "Issuers are partners, not competitors.",
+    UNKNOWN: "Understand the layer this company occupies.",
+  };
 
-  const aggregatorDisqualify = [
-    "Are you building a marketplace or the infra powering financial products?",
-    "Do you need underlying FD/RD/banking products for your platform?",
-  ];
-
-  const aggregatorPartner = [
-    "Could be a distribution channel for Blostem-powered products",
-    "Their platform could embed Blostem APIs for product features",
-    "Potential co-sell to their platform customers",
-  ];
+  const disqualify: Record<CompetitorCategory, string[]> = {
+    BROKER: [
+      "Are you building a trading platform or BFSI infrastructure?",
+      "Do you need FD/RD APIs for your product?",
+    ],
+    LENDER: [
+      "Are you building a lending product or BFSI infrastructure?",
+      "Do you need deposit products (FD/RD) for your book?",
+    ],
+    AGGREGATOR: [
+      "Are you building a marketplace or the infra powering financial products?",
+      "Do you need underlying products to populate your platform?",
+    ],
+    END_PRODUCT: [
+      "Are you building a neobank UI or BFSI infrastructure?",
+      "Do you need APIs for banking products?",
+    ],
+    INFRA_LAYER: [
+      "Are you comparing API/SDK infrastructure providers?",
+      "What specific rails (AA, UPI, mandates) do you need?",
+    ],
+    PAYMENT_GATEWAY: [
+      "Are you comparing payment gateways or BFSI infra?",
+      "Do you need deposit/banking APIs beyond payments?",
+    ],
+    WALLET: [
+      "Are you comparing wallets or BFSI infrastructure?",
+      "Do you need FD/RD product integration?",
+    ],
+    ISSUER: [
+      "Are you looking for product issuers or infrastructure?",
+    ],
+    UNKNOWN: [
+      "Confirm if this company overlaps with Blostem's BFSI infra target",
+    ],
+  };
 
   return {
     competitor,
-    category,
-    classification: "Non-competitor (marketplace/distribution layer)",
-    market_role: "distribution_layer",
-    where_they_fit: getStrategicWhereTheyFit(category),
-    overlap: category === "AGGREGATOR" ? aggregatorOverlaps : getStrategicOverlap(category),
-    partner_potential: category === "AGGREGATOR" ? aggregatorPartner : [],
-    ae_positioning: category === "AGGREGATOR" ? aggregatorPositioning : getStrategicPositioning(category),
-    disqualify_questions: category === "AGGREGATOR" ? aggregatorDisqualify : getStrategicDisqualify(category),
+    category: cat,
+    classification: `${cat} — ${roleDesc(cat)}`,
+    market_role: getMarketRoleLabel(cat),
+    where_they_fit: whereTheyFit[cat] || "Unknown",
+    overlap: overlaps[cat] || ["Limited overlap"],
+    partner_potential: cat === "AGGREGATOR" ? ["Distribution channel for Blostem-powered products"] : [],
+    ae_positioning: positioning[cat] || "Understand the category boundary.",
+    disqualify_questions: disqualify[cat] || ["Confirm overlap with BFSI infra"],
   };
 }
 
-function getStrategicWhereTheyFit(category: CompetitorCategory): string {
-  switch (category) {
-    case "BROKER": return "Customer-facing investing/trading platform";
-    case "LENDER": return "Credit/lending platform";
-    case "AGGREGATOR": return "Financial products marketplace (comparison/distribution)";
-    case "INSURTECH": return "Insurance distribution platform";
-    default: return "Distribution layer for financial products";
-  }
-}
-
-function getStrategicOverlap(category: CompetitorCategory): string[] {
-  switch (category) {
-    case "BROKER":
-      return ["Platform teams may need FD/RD APIs for savings features"];
-    case "LENDER":
-      return ["Could integrate FD/RD for lending against securities"];
-    default:
-      return ["Limited overlap with BFSI infra layer"];
-  }
-}
-
-function getStrategicPositioning(category: CompetitorCategory): string {
-  switch (category) {
-    case "BROKER":
-      return "If you're building infrastructure like brokerages use, you're not choosing a brokerage — you're choosing the layer underneath it.";
-    case "LENDER":
-      return "For deposit-backed lending products, you need BFSI infra, not just a lending platform.";
-    default:
-      return "Understand the category boundary — this company solves different problems than Blostem.";
-  }
-}
-
-function getStrategicDisqualify(category: CompetitorCategory): string[] {
-  switch (category) {
-    case "BROKER":
-      return [
-        "Are you building a trading platform or BFSI infrastructure?",
-        "Do you need FD/RD APIs for your product, or are you building brokerage features?",
-      ];
-    case "LENDER":
-      return [
-        "Are you building a lending product or BFSI infrastructure?",
-        "Do you need deposit products (FD/RD) for your lending book?",
-      ];
-    default:
-      return [
-        "Confirm if this company overlaps with Blostem's target use case (BFSI infra for FD/RD/banking products)",
-      ];
-  }
+function getMarketRoleLabel(cat: CompetitorCategory): string {
+  if (COMPETITOR_CATEGORIES.includes(cat)) return "competitor";
+  if (SUPPLY_SIDE_CATEGORIES.includes(cat)) return "supply_side";
+  return "non_competitor";
 }
