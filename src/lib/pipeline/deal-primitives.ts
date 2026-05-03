@@ -61,35 +61,32 @@ function isImplicitComplaint(signal: Signal): boolean {
 
 // Detect competitor type dynamically from signals and tagline - no hardcoded company names
 function detectCompetitorType(competitor: string, signals: Signal[], intelligence: ExtractedIntelligence): CompetitorType {
-  const competitorLower = competitor.toLowerCase();
-
-  // Check tagline for type hints
   const tagline = (intelligence.positioning?.tagline || "").toLowerCase();
 
-  // Auto-detect wallet vs gateway vs NBFC vs infra from tagline
-  if (/wallet|upi|paytm|phonepe|mobikwik/i.test(tagline + " " + competitorLower)) {
+  // Auto-detect wallet vs gateway vs NBFC vs infra from tagline - category patterns only
+  if (/wallet|mobile.*wallet|digital.*wallet|prepaid.*wallet/i.test(tagline)) {
     return "wallet";
   }
-  if (/gateway|merchant.*payment|payment.*gateway/i.test(tagline)) {
+  if (/gateway|merchant.*payment|payment.*processor|checkout.*solution/i.test(tagline)) {
     return "gateway";
   }
-  if (/nbfc|lending|loan|credit/i.test(tagline + " " + competitorLower)) {
+  if (/nbfc|non.*banking.*financial/i.test(tagline)) {
     return "NBFC";
   }
   if (/infrastructure|infra|banking.*as.*a.*service|baas/i.test(tagline)) {
     return "infra";
   }
 
-  // Check signals for type indicators
+  // Check signals for type indicators - category patterns only
   const allText = signals.map(s => s.value).join(" ").toLowerCase();
 
-  if (/wallet|upi|paytm|phonepe|mobikwik/i.test(allText)) {
+  if (/wallet|digital.*wallet|mobile.*wallet|wallet.*balance|upi.*payment|qr.*code.*payment/i.test(allText)) {
     return "wallet";
   }
-  if (/payment.*gateway|merchant.*checkout/i.test(allText)) {
+  if (/payment.*gateway|merchant.*checkout|payment.*processor/i.test(allText)) {
     return "gateway";
   }
-  if (/nbfc|lending|loan|credit.*product/i.test(allText)) {
+  if (/nbfc|lending|loan.*product|credit.*product/i.test(allText)) {
     return "NBFC";
   }
   if (/infrastructure|infra.*layer|banking.*as.*service/i.test(allText)) {
@@ -100,7 +97,7 @@ function detectCompetitorType(competitor: string, signals: Signal[], intelligenc
 }
 
 // Competitor-specific attack vectors - auto-generated from signal types
-function generateAttacksFromSignals(signals: Signal[]): string[] {
+function _generateAttacksFromSignals(signals: Signal[]): string[] {
   const attacks: string[] = [];
 
   // Group signals by type
@@ -377,9 +374,19 @@ export function deriveDealPrimitives(
   const topComplaints = allComplaintSignals
     .filter(s => s.normalizedType === "support_issue" || s.normalizedType === "payout_issue" || s.normalizedType === "account_issue" || classifyNegativeSignal(s.value) === "trust_risk")
     .slice(0, 2);
+  // Fallback default based on competitor type
+  const defaultComplaintByType: Record<string, string> = {
+    wallet: "wallet MDR + settlement complexity",
+    gateway: "gateway pricing opacity and MDR compounding",
+    NBFC: "lending margin overhead and compliance complexity",
+    infra: "integration maintenance overhead",
+    unknown: "pricing opacity and operational complexity",
+  };
+  const defaultComplaint = defaultComplaintByType[compType] || "pricing complexity and operational overhead";
+
   const complaintSummary = topComplaints.length > 0
     ? topComplaints.map(s => s.value.slice(0, 60).toLowerCase()).join(" and ")
-    : "support delays and pricing complexity";
+    : defaultComplaint;
   const firstCitation = topComplaints[0]?.citationIds[0] || citations[0]?.id || "";
 
   objection_handling.push({

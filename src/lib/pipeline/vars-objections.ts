@@ -78,7 +78,8 @@ export async function generateVarsAndObjections(
   intelligence: ExtractedIntelligence,
   signals: Signal[],
   sourceMap: Record<string, string[]>,
-  citations: Citation[]
+  citations: Citation[],
+  competitor?: string
 ): Promise<{ vars_layer: VARSLayer; objection_handling: ObjectionHandling[] }> {
   const model = google("gemini-2.5-flash");
 
@@ -182,14 +183,14 @@ Generate VARS + objection handling. Return ONLY JSON:
   if (isGateway) {
     return {
       vars_layer: {
-        validate: `Prospects choose Razorpay for fast payment setup and broad UPI/card coverage.`,
-        acknowledge: `Strong gateway with solid developer experience and wide payment ecosystem reach.`,
+        validate: `Prospects choose ${competitor} for fast payment setup and broad UPI/card coverage.`,
+        acknowledge: `Strong payment platform with wide payment ecosystem reach.`,
         reframe: `Transaction + MDR pricing compounds at scale and adds reconciliation overhead for multi-bank BFSI products.`,
         specify: `Blostem replaces payment-layer complexity with infra-layer control — predictable costs, single API, native BFSI compliance.`,
       },
       objection_handling: [
         {
-          objection: "We already use Razorpay",
+          objection: `We already use ${competitor}`,
           counter: `That works early, but at scale MDR + settlement layers increase total cost and reconciliation overhead — infra models remove both cost unpredictability and operational drag.`,
           evidence: "citation-1",
         },
@@ -204,8 +205,8 @@ Generate VARS + objection handling. Return ONLY JSON:
 
   return {
     vars_layer: {
-      validate: `Prospects considering ${intelligence.positioning?.tagline || "this competitor"} evaluate pricing and ease of use.`,
-      acknowledge: `${intelligence.positioning?.tagline || "This competitor"} offers payment/payment orchestration capabilities.`,
+      validate: `Prospects considering ${intelligence.positioning?.tagline || competitor} evaluate pricing and ease of use.`,
+      acknowledge: `${intelligence.positioning?.tagline || competitor} offers payment/payment orchestration capabilities.`,
       reframe: `Transaction pricing plus settlement complexity compounds at scale for BFSI products.`,
       specify: `Blostem provides infra-layer control with predictable costs, single API integration, and native BFSI compliance.`,
     },

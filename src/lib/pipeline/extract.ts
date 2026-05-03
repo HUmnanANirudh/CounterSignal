@@ -19,6 +19,9 @@ async function fetchFallbackContent(url: string): Promise<string> {
 function parseJsonResponse(text: string): ExtractedData | null {
   let cleaned = text.trim();
 
+  // Strip markdown code blocks if present
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+
   // Find the first { and last } to extract JSON
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
@@ -30,19 +33,35 @@ function parseJsonResponse(text: string): ExtractedData | null {
 
   cleaned = cleaned.slice(firstBrace, lastBrace + 1);
 
-  // Count braces to check balance
-  const openBraces = (cleaned.match(/\{/g) || []).length;
-  const closeBraces = (cleaned.match(/\}/g) || []).length;
+  // Try parsing - if fails, try progressively removing problematic trailing content
+  let attempts = 0;
+  const maxAttempts = 3;
 
-  if (openBraces !== closeBraces) {
-    console.error(`[Extract] Unbalanced braces: { = ${openBraces}, } = ${closeBraces}`);
-    return null;
+  while (attempts < maxAttempts) {
+    // Count braces to check balance
+    const openBraces = (cleaned.match(/\{/g) || []).length;
+    const closeBraces = (cleaned.match(/\}/g) || []).length;
+
+    if (openBraces === closeBraces) {
+      try {
+        return JSON.parse(cleaned) as ExtractedData;
+      } catch {
+        // Try removing trailing problematic content
+      }
+    }
+
+    // Try trimming problematic trailing content
+    cleaned = cleaned.slice(0, -1);
+    attempts++;
   }
 
+  // Final attempt with trimmed version
+  const trimmed = cleaned.trim();
   try {
-    return JSON.parse(cleaned) as ExtractedData;
+    return JSON.parse(trimmed) as ExtractedData;
   } catch (e: unknown) {
-    console.error(`[Extract] JSON parse failed: ${(e as Error).message}`);
+    console.error(`[Extract] JSON parse failed after ${attempts} attempts: ${(e as Error).message}`);
+    console.error(`[Extract] Sample: ${trimmed.slice(0, 200)}...`);
     return null;
   }
 }

@@ -134,6 +134,18 @@ export interface BattlecardInput {
   competitorName: string;
 }
 
+export interface NonCompetitorContext {
+  competitor: string;
+  category: string;
+  classification: string;
+  why_not_competitor: string[];
+  where_they_fit: string;
+  how_they_overlap: string[];
+  how_to_position_blostem: string;
+  disqualify_fast: string[];
+  signals: string[];
+}
+
 export interface ExtractedData {
   positioning: { tagline: string; targetSegments: string[]; differentiators: string[] };
   pricing_posture: { model: string; entryPrice: string; tiers: PricingTier[]; opacity: "clear" | "opaque" };

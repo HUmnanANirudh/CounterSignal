@@ -1,12 +1,14 @@
-import type { Battlecard } from "@/types/battlecard";
+import type { Battlecard, NonCompetitorContext } from "@/types/battlecard";
 import { search } from "./search";
 import { preprocess, hasImplicitComplaints } from "./preprocess";
 import { extract } from "./extract";
 import { deriveSignals, calculateConfidence } from "./signals";
-import { deriveDealPrimitives } from "./deal-primitives";
 import { generateVarsAndObjections } from "./vars-objections";
 import { renderMarkdown } from "./render";
 import { sanitizeForAE } from "./sanitize";
+import { detectCompetitorCategory, generateNonCompetitorContext, getPricingModelForCategory } from "./classify";
+import type { CompetitorCategory } from "./classify";
+import { deriveDealPrimitives, type CompetitorType } from "./deal-primitives";
 
 export interface PipelineCallbacks {
   onStageChange: (stage: PipelineStage, message: string) => void;
@@ -17,6 +19,7 @@ export interface PipelineCallbacks {
 
 export type PipelineStage =
   | "searching"
+  | "classifying"
   | "preprocessing"
   | "extracting"
   | "deriving"
@@ -91,13 +94,82 @@ export async function runPipeline(
       console.log(`[Pipeline] Domain breakdown: ${JSON.stringify(debugInfo.sourcesByDomain)}`);
     }
 
-    callbacks.onStageChange("preprocessing", `Found ${citations.length} sources from ${debugInfo?.domainCount || 1} domains, preprocessing...`);
+    callbacks.onStageChange("classifying", `Classifying ${competitor}...`);
     const preprocessed = preprocess(rawContent);
+    const classification = detectCompetitorCategory(competitor, rawContent, preprocessed.pricing_candidates[0] || "");
+
+    console.log(`[Pipeline] Classification: ${classification.category} (confidence: ${classification.confidence.toFixed(2)}) - isCompetitor: ${classification.isCompetitor}`);
+
+    // NON-COMPETITOR PATH
+    if (!classification.isCompetitor) {
+      console.log(`[Pipeline] ${competitor} is NOT a competitor (${classification.category}) — generating non-competitor context`);
+
+      const nonCompetitorContext = generateNonCompetitorContext(competitor, classification, citations);
+
+      // Generate a minimal battlecard structure for non-competitors
+      // This keeps the same output structure but with strategic context instead
+      const minimalBattlecard: Battlecard = {
+        competitor,
+        generatedAt: new Date().toISOString(),
+        researchDurationMs: Date.now() - startTime,
+        positioning: {
+          tagline: nonCompetitorContext.where_they_fit,
+          targetSegments: [],
+          differentiators: [],
+        },
+        pricing_posture: {
+          model: getPricingModelForCategory(classification.category as CompetitorCategory),
+          entryPrice: "opaque",
+          tiers: [],
+          opacity: "opaque",
+        },
+        recent_moves: [],
+        customer_truths: {
+          positives: [],
+          negatives: [],
+          keyComplaints: [],
+        },
+        VARS_layer: {
+          validate: `${competitor} is a ${classification.category}, not a direct Blostem competitor.`,
+          acknowledge: `${nonCompetitorContext.how_they_overlap.join(" ")}`,
+          reframe: `${nonCompetitorContext.why_not_competitor.join(" ")}`,
+          specify: nonCompetitorContext.how_to_position_blostem,
+        },
+        objection_handling: [],
+        AE_BATTLECARD: {
+          company_overview: nonCompetitorContext.classification,
+          competitor_type: classification.category.toLowerCase() as CompetitorType,
+          category_contrast: `${competitor} = ${classification.category}; Blostem = BFSI infrastructure layer`,
+          quick_dismisses: nonCompetitorContext.disqualify_fast,
+          objection_handling: [],
+          why_we_win: [],
+          why_we_lose: [],
+          pricing_positioning: "Not applicable — different category",
+          landmines: [],
+          FUD_responses: [],
+          proof_points: [],
+          compete_aggressively_when: [],
+          signal_trace: [],
+        },
+        sourceMap: {},
+        citations: citations.slice(0, 6),
+        confidence: { score: 0.7, factors: ["non-competitor classification", `category: ${classification.category}`] },
+        dataGaps: ["non_competitor_category"],
+      };
+
+      setCache(competitor, minimalBattlecard as Battlecard);
+      const markdown = renderNonCompetitorContext(nonCompetitorContext);
+      callbacks.onChunk(markdown);
+      callbacks.onComplete(minimalBattlecard as Battlecard);
+      return;
+    }
+
+    // COMPETITOR PATH (original logic)
+    callbacks.onStageChange("preprocessing", `Found ${citations.length} sources from ${debugInfo?.domainCount || 1} domains, preprocessing...`);
 
     if (preprocessed.pricing_candidates.length === 0) {
       dataGaps.push("pricing_not_found");
     }
-    // Only flag complaints_not_found if NO explicit complaints AND NO implicit complaints (fraud, regulatory, financial)
     if (preprocessed.complaint_sentences.length === 0 && !hasImplicitComplaints(preprocessed)) {
       dataGaps.push("complaints_not_found");
     }
@@ -113,20 +185,23 @@ export async function runPipeline(
       dataGaps.push("low_confidence_signal");
     }
 
-    // Derive deal primitives (AE-aligned)
+    // If weak signals, disable generic VARS
+    if (signals.length < 3) {
+      console.log(`[Pipeline] Only ${signals.length} signals — disabling generic VARS, downgrading confidence`);
+      dataGaps.push("weak_signals_low_confidence");
+    }
+
     callbacks.onStageChange("primitives", "Generating deal primitives for AE use...");
     const raw_ae_battlecard = deriveDealPrimitives(extracted, signals, citations, competitor);
-
-    // Post-processing: sanitize for AE readability
     const ae_battlecard = sanitizeForAE(raw_ae_battlecard);
 
-    // Keep legacy VARS for backwards compatibility
     callbacks.onStageChange("vars", "Generating VARS positioning...");
     const { vars_layer, objection_handling } = await generateVarsAndObjections(
       extracted,
       signals,
       sourceMap,
-      citations
+      citations,
+      competitor
     );
 
     callbacks.onStageChange("rendering", "Rendering battlecard...");
@@ -140,15 +215,12 @@ export async function runPipeline(
       pricing_posture: extracted.pricing_posture || { model: "unknown", entryPrice: "opaque", tiers: [], opacity: "opaque" },
       recent_moves,
       customer_truths: extracted.customer_truths || { positives: [], negatives: [], keyComplaints: [] },
-      // Legacy layers (kept for backwards compatibility)
       VARS_layer: vars_layer,
       objection_handling,
-      // New AE-aligned layer
       AE_BATTLECARD: ae_battlecard,
-      // Signal data for render control
       signals,
       sourceMap,
-      citations: citations.slice(0, 6), // Limit to 6 for latency
+      citations: citations.slice(0, 6),
       confidence,
       dataGaps,
     };
@@ -160,4 +232,45 @@ export async function runPipeline(
   } catch (error) {
     callbacks.onError(error instanceof Error ? error : new Error(String(error)));
   }
+}
+
+function renderNonCompetitorContext(context: NonCompetitorContext): string {
+  const lines: string[] = [];
+
+  lines.push(`# ${context.competitor} — Strategic Context`);
+  lines.push(`**Classification:** NOT A COMPETITOR | **Category:** ${context.category}`);
+  lines.push(`**Generated:** ${new Date().toLocaleString()}`);
+  lines.push(`---`);
+  lines.push(``);
+  lines.push(`## Why ${context.competitor} Is Not a Competitor`);
+  for (const reason of context.why_not_competitor) {
+    lines.push(`- ${reason}`);
+  }
+  lines.push(``);
+  lines.push(`## Where They Fit`);
+  lines.push(`**${context.where_they_fit}**`);
+  lines.push(``);
+
+  if (context.how_they_overlap.length > 0) {
+    lines.push(`## How They Might Overlap (Weak)`);
+    for (const overlap of context.how_they_overlap) {
+      lines.push(`- ${overlap}`);
+    }
+    lines.push(``);
+  }
+
+  lines.push(`## How to Position Blostem`);
+  lines.push(`${context.how_to_position_blostem}`);
+  lines.push(``);
+
+  lines.push(`## Disqualify Fast (For AE)`);
+  for (const q of context.disqualify_fast) {
+    lines.push(`- ${q}`);
+  }
+  lines.push(``);
+
+  lines.push(`---`);
+  lines.push(`*This company is not in Blostem's competitive set. Use the questions above to quickly qualify/dequalify opportunities.*`);
+
+  return lines.join("\n");
 }

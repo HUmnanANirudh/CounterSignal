@@ -17,6 +17,7 @@ export interface Signal {
 export type PipelineStage =
   | "idle"
   | "searching"
+  | "classifying"
   | "preprocessing"
   | "extracting"
   | "deriving"
