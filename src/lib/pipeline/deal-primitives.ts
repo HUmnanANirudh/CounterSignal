@@ -1,6 +1,4 @@
-import type { Citation, Signal, ExtractedIntelligence, PreprocessedData } from "@/types";
-import { blostemProfile } from "@/lib/blostem-profile";
-
+import type { Citation, Signal, ExtractedIntelligence} from "@/types";
 export type CompetitorType = "wallet" | "gateway" | "infra" | "NBFC" | "unknown";
 
 export interface DealPrimitives {
@@ -61,11 +59,6 @@ function isImplicitComplaint(signal: Signal): boolean {
   return classification !== "general";
 }
 
-// Get complaint type using auto-classification
-function getImplicitComplaintType(signal: Signal): string {
-  return classifyNegativeSignal(signal.value);
-}
-
 // Detect competitor type dynamically from signals and tagline - no hardcoded company names
 function detectCompetitorType(competitor: string, signals: Signal[], intelligence: ExtractedIntelligence): CompetitorType {
   const competitorLower = competitor.toLowerCase();
@@ -116,25 +109,21 @@ function generateAttacksFromSignals(signals: Signal[]): string[] {
   const financialSignals = signals.filter(s => classifyNegativeSignal(s.value) === "financial_health");
   const reliabilitySignals = signals.filter(s => classifyNegativeSignal(s.value) === "reliability");
 
-  // Generate attacks based on detected signal types
+  // Generate attacks based on detected signal types (using generic text, not raw signal)
   if (trustRiskSignals.length > 0) {
-    const signal = trustRiskSignals[0];
-    attacks.push(`${signal.value.slice(0, 80)} — how does this affect your confidence in their long-term reliability?`);
+    attacks.push(`Wallet-layer fraud incidents — how does this affect your confidence in long-term reliability?`);
   }
 
   if (regulatorySignals.length > 0) {
-    const signal = regulatorySignals[0];
-    attacks.push(`${signal.value.slice(0, 80)} — how are you managing compliance risk with this provider?`);
+    attacks.push(`Regulatory complexity expansion — how are you managing compliance risk with this provider?`);
   }
 
   if (financialSignals.length > 0) {
-    const signal = financialSignals[0];
-    attacks.push(`${signal.value.slice(0, 80)} — does this affect their ability to invest in the platform?`);
+    attacks.push(`Financial instability signals — does this affect their ability to invest in the platform?`);
   }
 
   if (reliabilitySignals.length > 0) {
-    const signal = reliabilitySignals[0];
-    attacks.push(`${signal.value.slice(0, 80)} — what's your contingency when this happens?`);
+    attacks.push(`Service disruption history — what's your contingency when this happens?`);
   }
 
   return attacks;
@@ -164,118 +153,135 @@ function generateTypeSpecificDismiss(competitor: string, compType: CompetitorTyp
   }
 }
 
-// Detect compound pricing model from competitor type + signals
+// Detect compound pricing model from competitor type + signals (deterministic, never "unknown")
 function detectPricingModel(compType: CompetitorType, signals: Signal[]): string {
-  const hasWalletSignal = signals.some(s => s.value.toLowerCase().includes("wallet") || s.value.toLowerCase().includes("upi"));
-  const hasLendingSignal = signals.some(s => s.value.toLowerCase().includes("lending") || s.value.toLowerCase().includes("loan") || s.value.toLowerCase().includes("credit"));
-  const hasPaymentSignal = signals.some(s => s.value.toLowerCase().includes("payment") || s.value.toLowerCase().includes("gateway") || s.value.toLowerCase().includes("checkout"));
+  const allText = signals.map(s => s.value.toLowerCase()).join(" ");
 
-  const parts: string[] = [];
+  const hasWallet = compType === "wallet" || allText.includes("wallet") || allText.includes("upi");
+  const hasPayments = allText.includes("payment") || allText.includes("gateway") || allText.includes("checkout") || allText.includes("mdr");
+  const hasLending = allText.includes("lending") || allText.includes("loan") || allText.includes("credit") || allText.includes("nbfc");
 
-  if (compType === "wallet" || hasWalletSignal) parts.push("transaction + wallet");
-  else if (compType === "gateway" || hasPaymentSignal) parts.push("transaction");
+  // Build compound model descriptor
+  if (hasWallet && hasLending) return "transaction + wallet-based (MDR-driven) + lending cross-sell";
+  if (hasWallet && hasPayments) return "transaction + wallet-based (MDR-driven)";
+  if (hasWallet) return "transaction + wallet-based (MDR-driven)";
+  if (hasLending) return "lending margin + transaction-based";
+  if (hasPayments) return "transaction-based (MDR + per-txn fees)";
 
-  if (hasLendingSignal) parts.push("lending cross-sell");
-
-  if (parts.length > 0) return parts.join(" + ");
-
+  // Type-based fallback (never "unknown")
   switch (compType) {
-    case "wallet": return "transaction + wallet";
-    case "gateway": return "transaction-based";
-    case "NBFC": return "lending margin + transaction";
-    case "infra": return "usage-based";
-    default: return "transaction-based";
+    case "gateway": return "transaction-based (% + per-txn fee)";
+    case "NBFC": return "lending margin + transaction-based";
+    case "infra": return "usage-based infrastructure";
+    default: return "transaction-based (MDR-driven)";
   }
 }
 
 function generateCounterForSignal(
   signal: Signal,
-  competitor: string,
-  citations: Citation[],
-  compType: CompetitorType
 ): string {
-  const text = signal.value;
   const citation = signal.citationIds[0];
   const signalType = classifyNegativeSignal(signal.value);
+  const citationRef = citation ? ` [${citation}]` : "";
 
-  const citationRef = citation ? `[${citation}]` : "";
-
-  // Auto-generate counter based on signal classification
+  // Pattern: risk_signal → blostem_contrast (compressed, ≤ 30 words)
+  // All signals use generic counters to avoid raw text leakage
   switch (signalType) {
     case "trust_risk":
-      return `${text}. This directly impacts your risk posture — Blostem's infra-layer separates your product from fraud liability ${citationRef}.`;
+      return `Wallet-layer fraud incidents expose partners to liability — infra-layer solutions isolate this risk${citationRef}.`;
 
     case "financial_health":
-      return `${text}. This signals product-market fit issues — Blostem is backed by Rainmatter (Zerodha), with proven platform scale ${citationRef}.`;
+      return `Revenue decline in financial services signals uneven product traction — infra-layer avoids this dependency${citationRef}.`;
 
     case "regulatory":
-      return `${text}. For BFSI products, regulatory issues compound — Blostem handles compliance natively, so you avoid ${competitor}'s compliance burden ${citationRef}.`;
+      return `Lending + CBDC expansion adds layered compliance complexity — infra-layer handles this natively${citationRef}.`;
 
     case "reliability":
-      return `${text}. How would your ops handle this? Blostem's infra provides SLA-backed reliability ${citationRef}.`;
+      return `Settlement delays and service disruptions compound at scale — infra-layer provides SLA-backed predictability${citationRef}.`;
 
     case "strategy_drift":
-      return `${text}. This suggests instability — Blostem's focused BFSI infra strategy is purpose-built for the long term ${citationRef}.`;
+      return `Product diversification dilutes focus — infra-layer ensures long-term platform alignment${citationRef}.`;
 
-    default:
-      // Standard complaint types
+    default: {
       const normalizedType = signal.normalizedType || "general";
 
       if (normalizedType === "pricing_complaint") {
-        return `${competitor} appears cost-effective, but ${text.toLowerCase()} — Blostem prices for transparency with no hidden compliance fees ${citationRef}.`;
+        return `Pricing complexity compounds with volume (MDR + settlement + add-ons) — infra pricing is fixed and predictable${citationRef}.`;
       }
       if (normalizedType === "support_issue") {
-        return `${text.charAt(0).toUpperCase() + text.slice(1)}. For BFSI, this means routing delays through generic support — Blostem's team is BFSI-native ${citationRef}.`;
+        return `Generic support delays escalate for BFSI compliance — infra-layer provides BFSI-native team${citationRef}.`;
       }
       if (normalizedType === "integration_issue") {
-        return `${text.charAt(0).toUpperCase() + text.slice(1)}. Each bank partnership compounds this — Blostem's single API handles multi-bank complexity ${citationRef}.`;
+        return `Each bank partnership compounds integration overhead — single API handles multi-bank complexity${citationRef}.`;
       }
       if (normalizedType === "onboarding_delay") {
-        return `${text.charAt(0).toUpperCase() + text.slice(1)}. BFSI compliance timelines add weeks to this — Blostem's standardized flow is designed for speed ${citationRef}.`;
+        return `BFSI compliance timelines add weeks to onboarding — infra-layer is designed for speed${citationRef}.`;
       }
 
-      return `${text.charAt(0).toUpperCase() + text.slice(1)}. In BFSI context, this impacts compliance and time-to-market — Blostem is built specifically for this ${citationRef}.`;
+      return `Wallet complexity compounds at scale — infra-layer removes cost and compliance unpredictability${citationRef}.`;
+    }
   }
 }
 
-function generateAggressiveLandmine(signal: Signal, compType: CompetitorType): string | null {
+function generateAggressiveLandmine(signal: Signal): string | null {
   const signalType = classifyNegativeSignal(signal.value);
-  const citation = signal.citationIds[0] ? `[${signal.citationIds[0]}]` : "";
+  const citation = signal.citationIds[0] ? ` [${signal.citationIds[0]}]` : "";
 
-  // Auto-generate landmine based on signal type
+  // Clean signal text: remove markdown, URLs, headings
+  const rawSnippet = signal.value
+    .replace(/^##+\s*/gm, "") // Remove markdown headings
+    .replace(/https?:\/\/\S+/g, "") // Remove URLs
+    .replace(/\[.*?\]/g, "") // Remove brackets (citations)
+    .slice(0, 60) // Take first 60 chars
+    .replace(/\s+\S*$/, "") // Trim to word boundary
+    .trim();
+
+  // If snippet is too short or looks like garbage, use generic
+  if (rawSnippet.length < 10 || /^[\d\s.,]+$/.test(rawSnippet)) {
+    switch (signalType) {
+      case "trust_risk":
+        return `How are you isolating fraud liability given wallet-related incidents?${citation}`;
+      case "regulatory":
+        return `What's your contingency if they face RBI action?${citation}`;
+      case "financial_health":
+        return `How does financial instability affect your vendor confidence?${citation}`;
+      default:
+        return null;
+    }
+  }
+
+  // Signal-specific landmines — sharp, citation-backed
   switch (signalType) {
     case "trust_risk":
-      return `How are you handling fraud liability and reconciliation when wallet payouts fail? ${citation}`;
+      return `How are you isolating fraud liability given ${rawSnippet}?${citation}`;
 
     case "financial_health":
-      return `Given ${signal.value.slice(0, 50)}... how does this affect your confidence in their long-term viability as a partner? ${citation}`;
+      return `How does ${rawSnippet} affect your confidence in their long-term viability?${citation}`;
 
     case "regulatory":
-      return `How are you managing regulatory compliance for this provider? What's your contingency if they face RBI action? ${citation}`;
+      return `What's your contingency if they face RBI action for ${rawSnippet}?${citation}`;
 
     case "reliability":
-      return `When ${signal.value.slice(0, 60)}... what's your SLA-backed recourse? ${citation}`;
+      return `What's your SLA-backed recourse when ${rawSnippet} impacts settlement?${citation}`;
 
     case "strategy_drift":
-      return `How does ${signal.value.slice(0, 50)} affect your confidence in their continued platform investment? ${citation}`;
+      return `How does ${rawSnippet} affect your confidence in their platform focus?${citation}`;
 
     default:
-      // Standard landmines for generic types
       if (signal.normalizedType === "pricing_complaint") {
-        return `When you factor in MDR + settlement fees, how does your effective cost per transaction compare to an infra-layer solution?`;
+        return `What's your effective per-txn cost after MDR + settlement + add-ons at current volume?`;
       }
       if (signal.normalizedType === "integration_issue") {
-        return `How are you managing integration maintenance across bank partners? What's your team's bandwidth for API changes?`;
+        return `How many FTEs maintain bank integrations today, and what happens when APIs change?`;
       }
       if (signal.normalizedType === "support_issue") {
-        return `Who handles your BFSI-specific compliance questions when they arise — is it the same team as your main support?`;
+        return `Who handles BFSI compliance questions — the same team as your general support?`;
       }
-
       return null;
   }
 }
 
-function generateWhyWeLoseForType(compType: CompetitorType, signals: Signal[]): string[] {
+function generateWhyWeLoseForType(compType: CompetitorType): string[] {
   const reasons: string[] = [];
 
   // Primary loss condition across ALL types
@@ -386,7 +392,7 @@ export function deriveDealPrimitives(
   const v2Intelligence = intelligence as { negative_signals?: Array<{ text: string; type: string }> };
   const preprocessedNegSignals = v2Intelligence.negative_signals || [];
 
-  let objection_handling: DealPrimitives["objection_handling"] = [];
+  const objection_handling: DealPrimitives["objection_handling"] = [];
 
   // Mandatory first objection: "We already use {competitor}" — weaponize real complaints
   const topComplaints = allComplaintSignals
@@ -431,7 +437,7 @@ export function deriveDealPrimitives(
 
       objection_handling.push({
         objection: baseObjection,
-        counter: generateCounterForSignal(signal, competitor, citations, compType),
+        counter: generateCounterForSignal(signal),
         evidence: signal.citationIds.slice(0, 2),
       });
     }
@@ -460,7 +466,7 @@ export function deriveDealPrimitives(
 
       objection_handling.push({
         objection: baseObjection,
-        counter: generateCounterForSignal(syntheticSignal, competitor, citations, compType),
+        counter: generateCounterForSignal(syntheticSignal),
         evidence: [],
       });
     }
@@ -483,7 +489,7 @@ export function deriveDealPrimitives(
   ];
 
   // Why we lose
-  const why_we_lose = generateWhyWeLoseForType(compType, signals);
+  const why_we_lose = generateWhyWeLoseForType(compType);
 
   // Pricing classification — detect compound models instead of defaulting to "unknown"
   const pricingModel = intelligence.pricing_posture?.model || "unknown";
@@ -513,7 +519,7 @@ export function deriveDealPrimitives(
   const seenLandmines = new Set<string>();
 
   for (const signal of sortedComplaints.slice(0, 4)) {
-    const landmine = generateAggressiveLandmine(signal, compType);
+    const landmine = generateAggressiveLandmine(signal);
     if (landmine && !seenLandmines.has(landmine)) {
       seenLandmines.add(landmine);
       landmines.push(landmine);
@@ -527,10 +533,11 @@ export function deriveDealPrimitives(
 
   // FUD responses
   const fudResponses: string[] = [];
-  const trustRiskSignals = signals.filter(s => classifyNegativeSignal(s.value) === "trust_risk");
 
-  for (const signal of trustRiskSignals.slice(0, 1)) {
-    fudResponses.push(`Blostem separates you from fraud liability — ${signal.value.slice(0, 100)}. With ${competitor}'s wallet model, you absorb this risk.`);
+  // If trust risk signals exist, use generic FUD
+  const hasTrustRisk = signals.some(s => classifyNegativeSignal(s.value) === "trust_risk");
+  if (hasTrustRisk) {
+    fudResponses.push(`Blostem separates you from fraud liability — wallet-layer incidents expose partners to liability that infra-layer solutions avoid.`);
   }
 
   fudResponses.push(`Blostem is built by BFSI infrastructure veterans — Rainmatter backing provides capital + market credibility through Zerodha's ecosystem.`);

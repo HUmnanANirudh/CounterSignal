@@ -1,58 +1,110 @@
 /**
  * sanitize.ts — Post-processing layer for AE-ready output.
  *
- * This module sits between intelligence/reasoning layers and the
- * presentation layer. Only clean, AE-scannable content passes through.
- *
  * Rules enforced:
  *  - No raw URLs or URL fragments
- *  - No markdown artifacts (## headings, [links](…), raw_content)
- *  - No short/meaningless lines
+ *  - No partial sentences or filler language
  *  - Deduped objections (by intent)
- *  - Quick dismiss: max 2, ≤ 12 words, no citations/URLs/questions
+ *  - Quick dismiss: max 2, ≤ 12 words, complete thoughts only
+ *  - VARS: ≤ 2 lines per section
  *  - Bullet caps per section
  *  - Signal trace stripped (internal-only layer)
+ *  - Filler words removed
  */
 
-import type { AE_BATTLECARD } from "@/types/battlecard";
+import type { AE_BATTLECARD, VARSLayer } from "@/types/battlecard";
+
+/* ── Filler removal ───────────────────────────────────────── */
+
+const FILLER_PATTERNS = [
+  /\bit is pertinent to note that\b/gi,
+  /\bit is worth noting that\b/gi,
+  /\bit should be noted that\b/gi,
+  /\bit is important to note that\b/gi,
+  /\bindeed\b/gi,
+  /\bfurthermore\b/gi,
+  /\bmoreover\b/gi,
+  /\badditionally\b/gi,
+  /\bnevertheless\b/gi,
+  /\bnonetheless\b/gi,
+  /\bhowever,?\s*/gi,
+  /\bin conclusion\b/gi,
+  /\bas such\b/gi,
+  /\bto that end\b/gi,
+  /\bin this regard\b/gi,
+  /\bwith respect to\b/gi,
+  /\bin terms of\b/gi,
+  /\bin essence\b/gi,
+  /\bquite\b/gi,
+  /\bvery\b/gi,
+  /\breally\b/gi,
+  /\bsignificantly\b/gi,
+  /\bextremely\b/gi,
+  /\bessentially\b/gi,
+  /\bfundamentally\b/gi,
+  /\bbasically\b/gi,
+  /\bconsequently\b/gi,
+  /\baccordingly\b/gi,
+  // Remove signal references from LLM output
+  /\[signal_\d+\]/gi,
+  // Remove citation lists like [citation-1], [citation-5], [citation-7]
+  /\s*\[\s*citation-\d+\s*\]/gi,
+];
+
+function stripFillers(text: string): string {
+  let result = text;
+  for (const pattern of FILLER_PATTERNS) {
+    result = result.replace(pattern, "");
+  }
+  // Collapse whitespace and fix punctuation
+  return result
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+\./g, ".")
+    .replace(/\s+,/g, ",")
+    .replace(/,\s*,/g, ",")
+    .replace(/\.\s*\./g, ".")
+    .replace(/^\s*,\s*/g, "")
+    .trim();
+}
 
 /* ── Line-level sanitization ──────────────────────────────── */
 
 const STRIP_PATTERNS = [
-  /^https?:\/\/.*/i,           // full URLs
-  /^com\/.*/i,                 // URL fragments
-  /^www\..*/i,                 // www links
-  /^\[.*?\]\(.*?\)/,           // markdown links
-  /raw_content/i,              // internal field leak
-  /^##\s/,                     // leaked markdown headings
-  /^data:\s/i,                 // data URIs
+  // URLs
+  /^https?:\/\/.*/i,
+  // URL fragments
+  /^com\/.*/i,
+  /^www\..*/i,
+  // Markdown links
+  /^\[.*?\]\(.*?\)/,
+  // Any URL-like content
+  /raw_content/i,
+  // Markdown headings (## Title)
+  /^##\s.*/i,
+  /^#+\s.*/i,
+  // Data prefix
+  /^data:\s/i,
+  // Lines starting with common article title patterns
+  /^\[?[A-Z][a-z]+ [a-z]+ (leads|causes|results|reported|announces|says)/i,
 ];
 
 const MIN_LINE_LENGTH = 8;
 
 export function sanitizeLine(line: string): string | null {
   const trimmed = line.trim();
+  if (!trimmed || trimmed.length < MIN_LINE_LENGTH) return null;
 
-  // Empty → drop
-  if (!trimmed) return null;
-
-  // Too short to be meaningful
-  if (trimmed.length < MIN_LINE_LENGTH) return null;
-
-  // Matches strip pattern → drop
   for (const pattern of STRIP_PATTERNS) {
     if (pattern.test(trimmed)) return null;
   }
 
-  // Strip inline URLs but keep surrounding text
   const cleaned = trimmed
-    .replace(/https?:\/\/\S+/g, "")       // inline URLs
-    .replace(/com\/\S+/g, "")             // URL path fragments
-    .replace(/\s{2,}/g, " ")              // collapse whitespace
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/com\/\S+/g, "")
+    .replace(/\s{2,}/g, " ")
     .trim();
 
   if (cleaned.length < MIN_LINE_LENGTH) return null;
-
   return cleaned;
 }
 
@@ -62,14 +114,37 @@ export function sanitizeText(text: string): string {
   const clean = lines
     .map(sanitizeLine)
     .filter((l): l is string => l !== null);
-  return clean.join(" ").trim();
+  return stripFillers(clean.join(" ").trim());
+}
+
+/* ── Sentence completeness ────────────────────────────────── */
+
+/**
+ * Check if text is a complete thought (not a partial sentence).
+ * Rejects lines ending in "to.", "and.", "the.", etc.
+ */
+function isCompleteSentence(text: string): boolean {
+  const trimmed = text.trim();
+
+  // Must end with proper punctuation
+  if (!/[.!]$/.test(trimmed)) return false;
+
+  // Reject if ends with a preposition/article before the period
+  const partialEndings = /\b(to|and|the|a|an|of|in|for|with|from|by|at|on|is|are|was|were|has|had|have|but|or|nor|that|this|it|its|not|into|as)\.\s*$/i;
+  if (partialEndings.test(trimmed)) return false;
+
+  // Reject extremely short sentences (likely fragments)
+  const wordCount = trimmed.split(/\s+/).length;
+  if (wordCount < 4) return false;
+
+  return true;
 }
 
 /* ── Array sanitization ───────────────────────────────────── */
 
 export function sanitizeArray(items: string[], maxItems: number): string[] {
   return items
-    .map((item) => sanitizeText(item))
+    .map((item) => stripFillers(sanitizeText(item)))
     .filter((item) => item.length >= MIN_LINE_LENGTH)
     .slice(0, maxItems);
 }
@@ -80,56 +155,57 @@ export function sanitizeArray(items: string[], maxItems: number): string[] {
  * Quick dismiss rules:
  *  - max 2
  *  - each ≤ 12 words
- *  - no citations ([citation-N])
- *  - no URLs
- *  - no questions (?)
+ *  - no citations, URLs, questions
+ *  - must be a complete thought (no partial sentences)
  */
 export function sanitizeQuickDismisses(dismisses: string[]): string[] {
   return dismisses
     .map((d) => {
       let clean = d
-        .replace(/\[citation-\d+\]/gi, "")     // strip citations
-        .replace(/https?:\/\/\S+/g, "")         // strip URLs
-        .replace(/com\/\S+/g, "")               // strip URL fragments
-        .replace(/\s{2,}/g, " ")                // collapse spaces
+        .replace(/\[citation-\d+\]/gi, "")
+        .replace(/https?:\/\/\S+/g, "")
+        .replace(/com\/\S+/g, "")
         .trim();
 
-      // Truncate to ~12 words
+      clean = stripFillers(clean);
+
+      // Truncate to 12 words at a natural boundary
       const words = clean.split(/\s+/);
-      if (words.length > 14) {
-        // Find a natural break near word 12
-        clean = words.slice(0, 12).join(" ");
-        // End with period if not already punctuated
-        if (!/[.!]$/.test(clean)) clean += ".";
+      if (words.length > 12) {
+        // Find the last word that ends a clause (before a dash, comma, or period)
+        let cutPoint = 12;
+        for (let i = Math.min(11, words.length - 1); i >= 8; i--) {
+          if (/[.—,;]$/.test(words[i]) || words[i].endsWith("—")) {
+            cutPoint = i + 1;
+            break;
+          }
+        }
+        clean = words.slice(0, cutPoint).join(" ");
       }
+
+      // Ensure ends with period
+      clean = clean.replace(/[,;—]+$/, "").trim();
+      if (!/[.!]$/.test(clean)) clean += ".";
 
       return clean;
     })
     .filter((d) => {
-      // Must be meaningful
       if (d.length < MIN_LINE_LENGTH) return false;
-      // No questions
       if (d.includes("?")) return false;
+      if (!isCompleteSentence(d)) return false;
       return true;
     })
     .slice(0, 2);
 }
 
-/* ── Objection deduplication ──────────────────────────────── */
+/* ── Objection deduplication + counter compression ────────── */
 
-/**
- * Deduplicates objections by semantic intent.
- * Groups by the first 3 significant words of the objection text.
- * Keeps only the first (highest-priority) entry per group.
- * Max 3 unique objections.
- */
 export function dedupeObjections<T extends { objection: string; counter: string }>(
   objections: T[]
 ): T[] {
   const seen = new Map<string, T>();
 
   for (const obj of objections) {
-    // Normalize: lowercase, strip quotes, take first 3 meaningful words
     const normalized = obj.objection
       .toLowerCase()
       .replace(/['"]/g, "")
@@ -140,8 +216,22 @@ export function dedupeObjections<T extends { objection: string; counter: string 
     const intentKey = words.slice(0, 3).join("_");
 
     if (!seen.has(intentKey)) {
-      // Also sanitize the counter text
-      const cleanCounter = sanitizeText(obj.counter);
+      // Sanitize + compress counter
+      let cleanCounter = sanitizeText(obj.counter);
+      // Compress: max ~30 words
+      const counterWords = cleanCounter.split(/\s+/);
+      if (counterWords.length > 35) {
+        // Cut at sentence boundary near word 30
+        const partial = counterWords.slice(0, 35).join(" ");
+        const lastPeriod = partial.lastIndexOf(".");
+        if (lastPeriod > partial.length * 0.5) {
+          cleanCounter = partial.slice(0, lastPeriod + 1);
+        } else {
+          cleanCounter = partial;
+          if (!/[.!]$/.test(cleanCounter)) cleanCounter += ".";
+        }
+      }
+
       if (cleanCounter.length > 10) {
         seen.set(intentKey, { ...obj, counter: cleanCounter });
       }
@@ -149,6 +239,52 @@ export function dedupeObjections<T extends { objection: string; counter: string 
   }
 
   return Array.from(seen.values()).slice(0, 3);
+}
+
+/* ── VARS compression ─────────────────────────────────────── */
+
+/**
+ * Each VARS section: max 2 lines (~25 words).
+ * Total VARS: ≤ 8 lines.
+ * Also strips [signal_N] and [citation-N] lists from output.
+ */
+export function compressVARS(vars: VARSLayer): VARSLayer {
+  const stripRefs = (text: string): string => {
+    return text
+      // Remove [signal_N] references
+      .replace(/\[\s*signal_\d+\s*\]/gi, "")
+      // Remove multiple citation refs like [citation-1], [citation-5], [citation-7]
+      .replace(/\s*\[\s*citation-\d+\s*\]/gi, "")
+      // Remove trailing commas from cleaned lists
+      .replace(/,\s*\.\s*$/g, ".")
+      .trim();
+  };
+
+  const compress = (text: string): string => {
+    let clean = stripRefs(stripFillers(sanitizeText(text)));
+
+    // Hard cap: ~25 words
+    const words = clean.split(/\s+/);
+    if (words.length > 28) {
+      const partial = words.slice(0, 25).join(" ");
+      const lastPeriod = partial.lastIndexOf(".");
+      if (lastPeriod > partial.length * 0.4) {
+        clean = partial.slice(0, lastPeriod + 1);
+      } else {
+        clean = partial;
+        if (!/[.!]$/.test(clean)) clean += ".";
+      }
+    }
+
+    return clean;
+  };
+
+  return {
+    validate: compress(vars.validate),
+    acknowledge: compress(vars.acknowledge),
+    reframe: compress(vars.reframe),
+    specify: compress(vars.specify),
+  };
 }
 
 /* ── Full battlecard sanitization ─────────────────────────── */
@@ -159,34 +295,36 @@ export function sanitizeForAE(battlecard: AE_BATTLECARD): AE_BATTLECARD {
   return {
     ...battlecard,
 
-    // 1-2 lines max
-    company_overview: sanitizeText(battlecard.company_overview).split(". ").slice(0, 2).join(". ").trim(),
+    // 1-2 lines max, filler stripped
+    company_overview: stripFillers(
+      sanitizeText(battlecard.company_overview).split(". ").slice(0, 2).join(". ").trim()
+    ),
 
     competitor_type: battlecard.competitor_type,
 
-    // Max 2, ≤12 words, no citations/URLs/questions
+    // Max 2, ≤12 words, complete thoughts only
     quick_dismisses: sanitizeQuickDismisses(battlecard.quick_dismisses || []),
 
-    // Deduped by intent, max 3
+    // Deduped by intent, max 3, counters compressed
     objection_handling: dedupeObjections(battlecard.objection_handling || []),
 
-    // Capped lists
+    // Capped + filler-free
     why_we_win: sanitizeArray(battlecard.why_we_win || [], MAX_BULLETS),
     why_we_lose: sanitizeArray(battlecard.why_we_lose || [], MAX_BULLETS),
 
-    // Sanitized text
-    pricing_positioning: sanitizeText(battlecard.pricing_positioning),
+    // Filler-free
+    pricing_positioning: stripFillers(sanitizeText(battlecard.pricing_positioning)),
 
-    // Capped lists
+    // Capped
     landmines: sanitizeArray(battlecard.landmines || [], 3),
     FUD_responses: sanitizeArray(battlecard.FUD_responses || [], 3),
     proof_points: sanitizeArray(battlecard.proof_points || [], 3),
     compete_aggressively_when: sanitizeArray(battlecard.compete_aggressively_when || [], MAX_BULLETS),
 
-    // Signal trace: INTERNAL ONLY — strip from AE output
+    // Signal trace: INTERNAL ONLY — stripped from AE output
     signal_trace: [],
 
     // Category contrast: clean
-    category_contrast: sanitizeText(battlecard.category_contrast || ""),
+    category_contrast: stripFillers(sanitizeText(battlecard.category_contrast || "")),
   };
 }

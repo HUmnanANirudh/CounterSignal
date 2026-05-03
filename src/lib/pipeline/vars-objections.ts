@@ -9,6 +9,9 @@ const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
 function parseJsonResponse(text: string): { vars_layer: VARSLayer; objection_handling: ObjectionHandling[] } | null {
   let cleaned = text.trim();
 
+  // Strip markdown code blocks if present
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+
   // Find the first { and last } to extract JSON
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
@@ -140,6 +143,7 @@ Generate VARS + objection handling. Return ONLY JSON:
     model,
     prompt,
     temperature: 0.3,
+    maxOutputTokens: 2048, // Reduced for latency
   });
 
   console.log(`[Vars] LLM response preview: ${text.slice(0, 150)}...`);

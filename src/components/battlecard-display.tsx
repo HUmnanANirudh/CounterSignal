@@ -47,13 +47,13 @@ function SectionCard({
 
   return (
     <div
-      className="rounded-xl border border-white/[0.06] overflow-hidden transition-all duration-200"
+      className="rounded-xl border border-white/6 overflow-hidden transition-all duration-200"
       style={{ background: "rgba(255,255,255,0.02)" }}
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-white/[0.03] transition-colors cursor-pointer"
+        className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-white/3 transition-colors cursor-pointer"
       >
         <span
           className="flex items-center justify-center w-8 h-8 rounded-lg shrink-0"
@@ -159,7 +159,7 @@ function StructuredBattlecard({
     <div className="space-y-3">
       {/* ── Header ─────────────────────────────────────────── */}
       <div
-        className="rounded-xl border border-white/[0.06] p-6"
+        className="rounded-xl border border-white/6 p-6"
         style={{
           background:
             "linear-gradient(135deg, rgba(99,102,241,0.08), rgba(168,85,247,0.06))",
@@ -300,7 +300,7 @@ function StructuredBattlecard({
             {ae.objection_handling.map((obj, i) => (
               <div
                 key={i}
-                className="rounded-lg border border-white/[0.05] overflow-hidden"
+                className="rounded-lg border border-white/5 overflow-hidden"
               >
                 <div className="px-4 py-3 bg-sky-500/5">
                   <p className="font-medium text-sky-300 text-xs uppercase tracking-wider mb-1">
@@ -592,7 +592,7 @@ function StructuredBattlecard({
             {recent_moves.map((move, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between gap-3 bg-white/[0.02] rounded-lg px-3 py-2"
+                className="flex items-center justify-between gap-3 bg-white/2 rounded-lg px-3 py-2"
               >
                 <div className="flex-1">
                   <p className="font-medium text-sm">{move.name}</p>

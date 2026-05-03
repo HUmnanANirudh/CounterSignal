@@ -1,13 +1,7 @@
 import type { Battlecard } from "@/types/battlecard";
 
-interface RenderOptions {
-  /** Show signal trace (demo mode only) */
-  showSignalTrace?: boolean;
-}
-
 // HARD LIMIT: Total output lines
 const MAX_TOTAL_LINES = 40;
-const MAX_BULLETS_PER_SECTION = 5;
 const MAX_WORDS_PER_DISMISS = 12;
 
 // Text sanitization - AE-ready language (strict)
@@ -83,14 +77,14 @@ function deduplicateObjections<T extends { objection: string }>(items: T[]): T[]
   });
 }
 
-export function renderMarkdown(battlecard: Battlecard, options: RenderOptions = {}): string {
+export function renderMarkdown(battlecard: Battlecard): string {
   const { competitor, AE_BATTLECARD, citations, confidence } = battlecard;
 
-  // Confidence cap based on signal count (≤3 signals → cap at 0.8)
+  // Confidence cap based on signal count (≤4 signals → cap at 0.85)
   const signalCount = battlecard.signals?.length || 0;
   let effectiveConfidence = confidence.score;
-  if (signalCount <= 3) {
-    effectiveConfidence = Math.min(confidence.score, 0.8);
+  if (signalCount <= 4) {
+    effectiveConfidence = Math.min(confidence.score, 0.85);
   }
 
   const lines: string[] = [];

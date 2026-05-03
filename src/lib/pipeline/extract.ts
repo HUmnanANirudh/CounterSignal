@@ -123,8 +123,8 @@ export async function extract(
 
   const model = google("gemini-2.5-flash");
 
-  const pricingInfo = preprocessed.pricing_candidates.slice(0, 5).join("\n") || "None found";
-  const complaintInfo = preprocessed.complaint_sentences.slice(0, 5).join("\n") || "None found";
+  const pricingInfo = preprocessed.pricing_candidates.slice(0, 4).join("\n") || "None found";
+  const complaintInfo = preprocessed.complaint_sentences.slice(0, 4).join("\n") || "None found";
   const reviewInfo = preprocessed.review_blocks.slice(0, 3).join("\n") || "None found";
 
   // Include negative signals (fraud, regulatory, financial) in the prompt
@@ -172,8 +172,8 @@ Return ONLY the JSON object. No markdown, no explanation.`;
     const { text } = await generateText({
       model,
       prompt,
-      temperature: 0.05, // Lower temperature for more deterministic output
-      maxOutputTokens: 8192,
+      temperature: 0.05,
+      maxOutputTokens: 4096, // Reduced for latency
     });
 
     console.log(`[Extract] LLM response preview: ${text.slice(0, 150)}...`);

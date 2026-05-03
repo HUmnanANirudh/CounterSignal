@@ -185,7 +185,6 @@ export function preprocess(rawContent: string): PreprocessedDataV2 {
 }
 
 export function needsFallback(preprocessed: PreprocessedData): boolean {
-  const v2 = preprocessed as PreprocessedDataV2;
   return preprocessed.pricing_candidates.length === 0 || preprocessed.review_blocks.length === 0;
 }
 

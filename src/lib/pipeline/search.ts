@@ -250,7 +250,6 @@ function getSourceType(url: string, competitor?: string): SourceType {
 
 function selectDiversifiedResults(
   scored: Array<{ url: string; title: string; content: string; score: number; sourceWeight: number; compositeScore: number }>,
-  competitor?: string
 ): Array<{ url: string; title: string; content: string; score: number; sourceWeight: number }> {
   const selected: Array<{ url: string; title: string; content: string; score: number; sourceWeight: number }> = [];
   const domainUsage: Record<string, number> = {};
@@ -314,22 +313,19 @@ function selectDiversifiedResults(
 }
 
 export function buildSearchQueries(competitor: string): string[] {
+  // Reduced to 5 core queries for latency (was 8)
   return [
-    // Phase 1: Official/primary source - just company name in quotes, Google returns official site first
-    `"${competitor}" official site`,
-    `introducing "${competitor}"`,
-    `"${competitor}" company overview pricing product`,
-
-    // Phase 2: Review platforms
-    `site:g2.com OR site:capterra.com OR site:trustpilot.com "${competitor}" review rating`,
-    `site:reddit.com/r/India OR site:twitter.com "${competitor}" review complaint`,
-
-    // Phase 3: Startup media
-    `site:inc42.com OR site:medianama.com OR site:entrackr.com "${competitor}" news analysis`,
-    `site:moneycontrol.com OR site:bloomberg.com "${competitor}" news funding`,
-
-    // Phase 4: General overview
-    `"${competitor}" india fintech overview`,
+    // Core: company overview + 
+    `"introducing ${competitor}"`,
+    `"${competitor}" pricing plans fees`,
+    // Reviews (top priority for customer truths)
+    `site:g2.com OR site:capterra.com "${competitor}" review`,
+    // Startup news (signal sources)
+    `site:inc42.com OR site:medianama.com "${competitor}"`,
+    // Financial news
+    `site:moneycontrol.com OR site:bloomberg.com "${competitor}" fintech`,
+    // Reddit/community sentiment
+    `site:reddit.com "${competitor}" india fintech`,
   ];
 }
 
@@ -353,12 +349,12 @@ export async function search(competitor: string): Promise<SearchResult> {
 
   console.log(`[Search] Querying Tavily for: ${competitor}`);
 
-  const searchPromises = queries.map((query) =>
+  const searchPromises = queries.slice(0, 6).map((query) =>
     tvly.search(query, {
-      searchDepth: "advanced",
+      searchDepth: "basic", // Use basic for faster results
       topic: "finance",
-      maxResults: 8,
-      includeAnswer: "advanced",
+      maxResults: 6, // Reduced for latency
+      includeAnswer: "basic", // Reduced for latency
       includeImages: false,
     }).then((result) => {
       console.log(`[Search] "${query.slice(0, 40)}..." → ${result.results.length} results`);
@@ -408,7 +404,7 @@ export async function search(competitor: string): Promise<SearchResult> {
   const scored = allResults.map((r) => ({ ...r, compositeScore: scoreResult(r) }));
   scored.sort((a, b) => b.compositeScore - a.compositeScore);
 
-  const topResults = selectDiversifiedResults(scored, competitor);
+  const topResults = selectDiversifiedResults(scored);
 
   console.log(`[Search] Top 5 results:`);
   topResults.slice(0, 5).forEach((r, i) => {

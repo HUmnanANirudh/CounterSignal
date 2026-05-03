@@ -65,7 +65,7 @@ export async function runPipeline(
   const cached = getCached(competitor);
   if (cached) {
     callbacks.onStageChange("rendering", "Returning cached battlecard...");
-    callbacks.onChunk(renderMarkdown(cached, { showSignalTrace: false }));
+    callbacks.onChunk(renderMarkdown(cached));
     callbacks.onComplete(cached);
     return;
   }
@@ -154,7 +154,7 @@ export async function runPipeline(
     };
 
     setCache(competitor, battlecard);
-    const markdown = renderMarkdown(battlecard, { showSignalTrace: false });
+    const markdown = renderMarkdown(battlecard);
     callbacks.onChunk(markdown);
     callbacks.onComplete(battlecard);
   } catch (error) {

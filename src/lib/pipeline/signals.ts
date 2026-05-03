@@ -16,7 +16,7 @@ interface SignalAppearance {
 }
 
 // Classify signal severity based on type and source
-function classifySeverity(normalizedType: string, domainTypes: Set<string>): SignalSeverity {
+function classifySeverity(normalizedType: string){
   // HIGH severity: fraud, financial loss, regulatory issues from authoritative sources
   const highSeverityTypes = ["trust_risk", "financial_health", "regulatory"];
   if (highSeverityTypes.includes(normalizedType)) {
@@ -228,7 +228,7 @@ export function deriveSignals(
       // Auto-classify using regex patterns - works for any company, no manual mapping needed
       const normalizedType = classifyNegativeSignal(negSignal.text);
       // Determine severity based on signal type
-      const severity = classifySeverity(normalizedType, new Set());
+      const severity = classifySeverity(normalizedType);
       const matchingCitations = citations.filter((c) =>
         preprocessed.raw_content.includes(c.title.slice(0, 20))
       );
@@ -357,10 +357,10 @@ export function calculateConfidence(
     severityBonus
   );
 
-  // Hard cap: if signals < 4, confidence ≤ 0.8
-  const signalCap = signals.length < 4 ? 0.8 : 0.95;
-  if (signals.length < 4) {
-    factors.push(`⚠ Signal cap: ${signals.length} signals < 4, capping at ${Math.round(signalCap * 100)}%`);
+  // Hard cap: if signals ≤ 4, confidence ≤ 0.85
+  const signalCap = signals.length <= 4 ? 0.85 : 0.95;
+  if (signals.length <= 4) {
+    factors.push(`⚠ Signal cap: ${signals.length} signals ≤ 4, capping at ${Math.round(signalCap * 100)}%`);
   }
 
   const score = Math.max(0.1, Math.min(signalCap, baseScore - domainPenalty));
