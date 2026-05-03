@@ -113,10 +113,21 @@ export interface Battlecard {
   // New AE-aligned layer
   AE_BATTLECARD: AE_BATTLECARD;
 
+  // Signal data for rendering control
+  signals?: Signal[];
+
   sourceMap: Record<string, string[]>;
   citations: Citation[];
   confidence: Confidence;
   dataGaps: string[];
+}
+
+interface Signal {
+  id: string;
+  type: string;
+  value: string;
+  citationIds: string[];
+  normalizedType?: string;
 }
 
 export interface BattlecardInput {

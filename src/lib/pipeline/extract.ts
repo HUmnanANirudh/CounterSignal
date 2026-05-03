@@ -92,7 +92,9 @@ function validateExtractedData(data: ExtractedData): ExtractedData {
   return data;
 }
 
-const EXTRACTION_MAX_RETRIES = 1;
+const EXTRACTION_MAX_RETRIES = 0; // Single attempt for latency
+
+const MAX_CONTEXT_CHARS = 4000; // Cap context for latency
 
 export async function extract(
   preprocessed: PreprocessedData,
@@ -121,9 +123,9 @@ export async function extract(
 
   const model = google("gemini-2.5-flash");
 
-  const pricingInfo = preprocessed.pricing_candidates.slice(0, 8).join("\n") || "None found";
-  const complaintInfo = preprocessed.complaint_sentences.slice(0, 8).join("\n") || "None found";
-  const reviewInfo = preprocessed.review_blocks.slice(0, 5).join("\n") || "None found";
+  const pricingInfo = preprocessed.pricing_candidates.slice(0, 5).join("\n") || "None found";
+  const complaintInfo = preprocessed.complaint_sentences.slice(0, 5).join("\n") || "None found";
+  const reviewInfo = preprocessed.review_blocks.slice(0, 3).join("\n") || "None found";
 
   // Include negative signals (fraud, regulatory, financial) in the prompt
   const v2Preprocessed = preprocessed as { negative_signals?: Array<{ text: string; type: string }> };
@@ -147,7 +149,7 @@ CRITICAL RULES - VIOLATION = REJECTED OUTPUT:
 7. CUSTOMER TRUTHS MUST INCLUDE: Include any fraud incidents, regulatory issues, financial instability signals as keyComplaints. Example: "₹40Cr fraud incident" should appear in keyComplaints, not just negatives.
 
 Data:
-${processedData.raw_content.slice(0, 2000)}
+${processedData.raw_content.slice(0, MAX_CONTEXT_CHARS)}
 
 Pricing candidates: ${pricingInfo}
 Complaints: ${complaintInfo}

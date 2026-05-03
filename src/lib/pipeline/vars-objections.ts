@@ -50,11 +50,25 @@ function constrainObjections(
 
 // Strip hallucinated pricing patterns from VARS text
 function sanitizeVarsText(text: string): string {
-  // Remove patterns like "8% capped at $5" or "9% plus $0"
-  return text
+  if (!text) return "";
+
+  let cleaned = text
+    // Remove patterns like "8% capped at $5" or "9% plus $0"
     .replace(/\d+\s*%\s*capped\s*at\s*\$\d+/gi, "[specific pricing not available]")
     .replace(/\d+\s*percent\s*(plus|\+)\s*\$0/gi, "[specific pricing not available]")
-    .replace(/\$\d+\s*percent/gi, "[specific pricing not available]");
+    .replace(/\$\d+\s*percent/gi, "[specific pricing not available]")
+    // Fix broken sentence fragments
+    .replace(/\.\s+(for|with|when|then|so|but|because)/gi, ". ")
+    // Ensure complete sentences
+    .replace(/\s+\.\s*$/g, ".")
+    .trim();
+
+  // Ensure trailing period
+  if (!/[.!?]$/.test(cleaned)) {
+    cleaned += ".";
+  }
+
+  return cleaned;
 }
 
 export async function generateVarsAndObjections(

@@ -64,7 +64,7 @@ export async function runPipeline(
   const cached = getCached(competitor);
   if (cached) {
     callbacks.onStageChange("rendering", "Returning cached battlecard...");
-    callbacks.onChunk(renderMarkdown(cached));
+    callbacks.onChunk(renderMarkdown(cached, { showSignalTrace: false }));
     callbacks.onComplete(cached);
     return;
   }
@@ -141,14 +141,16 @@ export async function runPipeline(
       objection_handling,
       // New AE-aligned layer
       AE_BATTLECARD: ae_battlecard,
+      // Signal data for render control
+      signals,
       sourceMap,
-      citations: citations.slice(0, 8),
+      citations: citations.slice(0, 6), // Limit to 6 for latency
       confidence,
       dataGaps,
     };
 
     setCache(competitor, battlecard);
-    const markdown = renderMarkdown(battlecard);
+    const markdown = renderMarkdown(battlecard, { showSignalTrace: false });
     callbacks.onChunk(markdown);
     callbacks.onComplete(battlecard);
   } catch (error) {
