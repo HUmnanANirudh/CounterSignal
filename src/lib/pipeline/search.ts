@@ -350,6 +350,8 @@ export interface SearchResult {
     domainCount: number;
     totalResults: number;
     sourcesByDomain: Record<string, number>;
+    relevantResults: number;
+    entityConfidence: number;
   };
 }
 
@@ -385,7 +387,7 @@ export async function search(competitor: string): Promise<SearchResult> {
   console.log(`[Search] Valid results: ${validResults.length}/${queries.length} queries`);
 
   if (validResults.length === 0) {
-    return { citations: [], rawContent: "", debugInfo: { domainCount: 0, totalResults: 0, sourcesByDomain: {} } };
+    return { citations: [], rawContent: "", debugInfo: { domainCount: 0, totalResults: 0, sourcesByDomain: {}, relevantResults: 0, entityConfidence: 0 } };
   }
 
   const allResults: Array<{ url: string; title: string; content: string; score: number; sourceWeight: number }> = [];
@@ -415,7 +417,39 @@ export async function search(competitor: string): Promise<SearchResult> {
 
   console.log(`[Search] Total unique results: ${allResults.length}`);
 
-  const scored = allResults.map((r) => ({ ...r, compositeScore: scoreResult(r) }));
+  // ENTITY RELEVANCE FILTER: Remove docs that don't mention the target entity
+  const entityNormalized = competitor.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const relevantResults = allResults.filter((r) => {
+    const titleLower = r.title.toLowerCase();
+    const contentLower = r.content.toLowerCase();
+    const titleNorm = titleLower.replace(/[^a-z0-9]/g, "");
+    const contentNorm = contentLower.replace(/[^a-z0-9]/g, "");
+
+    // Must have entity in title or first 500 chars of content
+    const inTitle = titleNorm.includes(entityNormalized);
+    const inContentStart = contentNorm.slice(0, 500).includes(entityNormalized);
+
+    // Count mentions - if 0, reject
+    const titleMentions = (titleLower.match(new RegExp(competitor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')) || []).length;
+    const contentMentions = (contentLower.match(new RegExp(competitor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')) || []).length;
+
+    if (titleMentions === 0 && contentMentions === 0) {
+      console.log(`[Search] REJECTING (no entity match): ${r.title.slice(0, 60)}...`);
+      return false;
+    }
+
+    return inTitle || inContentStart;
+  });
+
+  console.log(`[Search] Entity-filtered results: ${relevantResults.length}/${allResults.length} relevant`);
+
+  // If < 3 relevant docs, flag low confidence early
+  const entityConfidence = relevantResults.length >= 3 ? 0.7 : relevantResults.length >= 1 ? 0.4 : 0.1;
+  if (relevantResults.length < 3) {
+    console.warn(`[Search] LOW ENTITY CONFIDENCE: only ${relevantResults.length} relevant docs`);
+  }
+
+  const scored = relevantResults.map((r) => ({ ...r, compositeScore: scoreResult(r) }));
   scored.sort((a, b) => b.compositeScore - a.compositeScore);
 
   const topResults = selectDiversifiedResults(scored);
@@ -457,6 +491,8 @@ export async function search(competitor: string): Promise<SearchResult> {
       domainCount: Object.keys(normalizedDomainCount).length,
       totalResults: allResults.length,
       sourcesByDomain: normalizedDomainCount,
+      relevantResults: relevantResults.length,
+      entityConfidence,
     },
   };
 }

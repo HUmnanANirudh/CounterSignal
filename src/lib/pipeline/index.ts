@@ -1,5 +1,6 @@
 import type { Battlecard } from "@/types/battlecard";
 import { search } from "./search";
+import type { SearchResult } from "./search";
 import { preprocess, hasImplicitComplaints } from "./preprocess";
 import { extract } from "./extract";
 import { deriveSignals, calculateConfidence } from "./signals";
@@ -157,6 +158,16 @@ export async function runPipeline(
 
     if (citations.length === 0) {
       throw new Error("Insufficient search results. Try a more specific competitor name.");
+    }
+
+    // ENTITY CONFIDENCE CHECK: Fail fast if entity grounding is weak
+    const entityConfidence = debugInfo?.entityConfidence ?? 0.5;
+    if (entityConfidence < 0.3) {
+      console.warn(`[Pipeline] LOW ENTITY CONFIDENCE (${entityConfidence}) — insufficient relevant docs about ${competitor}`);
+      const insufficientCard = generateInsufficientDataCard(competitor, debugInfo);
+      callbacks.onChunk(renderMarkdown(insufficientCard));
+      callbacks.onComplete(insufficientCard);
+      return;
     }
 
     if (debugInfo && debugInfo.domainCount < MIN_DOMAINS) {
@@ -559,4 +570,67 @@ function renderInternalProfile(competitor: string): string {
   lines.push(`*This is Blostem's internal profile — use for reference, not competitive intelligence.*`);
 
   return lines.join("\n");
+}
+
+// INSUFFICIENT DATA CARD: Entity grounding failed — honest "no data" response
+function generateInsufficientDataCard(competitor: string, debugInfo?: SearchResult["debugInfo"]): Battlecard {
+  const relevantCount = debugInfo?.relevantResults ?? 0;
+  const totalCount = debugInfo?.totalResults ?? 0;
+
+  return {
+    competitor,
+    generatedAt: new Date().toISOString(),
+    researchDurationMs: 0,
+    positioning: {
+      tagline: `Insufficient reliable data about ${competitor}. No entity-grounded sources found.`,
+      targetSegments: [],
+      differentiators: [],
+    },
+    pricing_posture: {
+      model: "unknown",
+      entryPrice: "unknown",
+      tiers: [],
+      opacity: "opaque",
+    },
+    recent_moves: [],
+    customer_truths: {
+      positives: [],
+      negatives: [],
+      keyComplaints: [],
+    },
+    VARS_layer: {
+      validate: `Could not find sufficient information about ${competitor} to generate meaningful positioning.`,
+      acknowledge: `Limited public data available for this entity.`,
+      reframe: `Do not use generic assumptions — requires direct research.`,
+      specify: `Verify entity existence and sector before proceeding with competitive analysis.`,
+    },
+    objection_handling: [],
+    AE_BATTLECARD: {
+      company_overview: `INSUFFICIENT DATA — only ${relevantCount}/${totalCount} sources mention "${competitor}". Cannot generate reliable battlecard.`,
+      competitor_type: "unknown",
+      category_contrast: `Insufficient entity grounding for classification`,
+      quick_dismisses: [
+        "Confirm the company name is correct and spelled accurately",
+        "Verify this is an Indian fintech company (Blostem's target market)",
+        "Check if company has public web presence or news coverage",
+      ],
+      objection_handling: [],
+      why_we_win: [],
+      why_we_lose: [],
+      pricing_positioning: "Insufficient data",
+      landmines: [
+        "What exact products/services does this company offer?",
+        "What is their target market and customer segment?",
+        "Do they have API/developer documentation?",
+      ],
+      FUD_responses: [],
+      proof_points: [],
+      compete_aggressively_when: [],
+      signal_trace: [],
+    },
+    sourceMap: {},
+    citations: [],
+    confidence: { score: 0.15, factors: [`entity_grounding_failed: ${relevantCount}/${totalCount} relevant docs`] },
+    dataGaps: ["insufficient_entity_data", `relevant_docs_${relevantCount}_of_${totalCount}`],
+  };
 }
