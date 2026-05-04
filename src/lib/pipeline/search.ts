@@ -1,5 +1,6 @@
 import { tavily } from "@tavily/core";
 import type { Citation } from "@/types/battlecard";
+import { resolveEntity, filterContentForEntity, overlapsWithBlostem, extractProblemStatement } from "./entity-resolution";
 
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 
@@ -264,11 +265,9 @@ function selectDiversifiedResults(
 
     const domain = normalizeDomain(result.url);
     const sourceType = getSourceType(result.url);
-
-    // Prioritize underrepresented types
     const typeDeficit = (typeTargets[sourceType] || 0) - (typeCount[sourceType] || 0);
 
-    if (typeDeficit > 0 && domainUsage[domain] <= MAX_PER_DOMAIN) {
+    if (typeDeficit > 0 && (domainUsage[domain] || 0) <= MAX_PER_DOMAIN) {
       selected.push({
         url: result.url,
         title: result.title,
@@ -417,29 +416,73 @@ export async function search(competitor: string): Promise<SearchResult> {
 
   console.log(`[Search] Total unique results: ${allResults.length}`);
 
-  // ENTITY RELEVANCE FILTER: Remove docs that don't mention the target entity
-  const entityNormalized = competitor.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const relevantResults = allResults.filter((r) => {
+  // ENTITY RESOLUTION: Use resolved entity for accurate filtering
+  const entityResolution = resolveEntity(competitor);
+  const entity = entityResolution.resolved!;
+  console.log(`[Search] Entity resolved: ${entity.canonicalName} (confidence: ${entity.confidence})`);
+
+  // ENTITY RELEVANCE FILTER: Keep docs that mention the target entity with substance
+  const competitorLower = competitor.toLowerCase();
+  const competitorNormalized = competitorLower.replace(/[^a-z0-9]/g, "");
+
+  const relevantResults: typeof allResults = [];
+  const rejectedResults: { url: string; title: string; reason: string }[] = [];
+
+  for (const r of allResults) {
     const titleLower = r.title.toLowerCase();
     const contentLower = r.content.toLowerCase();
     const titleNorm = titleLower.replace(/[^a-z0-9]/g, "");
     const contentNorm = contentLower.replace(/[^a-z0-9]/g, "");
 
-    // Must have entity in title or first 500 chars of content
-    const inTitle = titleNorm.includes(entityNormalized);
-    const inContentStart = contentNorm.slice(0, 500).includes(entityNormalized);
+    // Check if entity appears in title or first 500 chars of content
+    const inTitle = titleNorm.includes(competitorNormalized);
+    const inContentStart = contentNorm.slice(0, 500).includes(competitorNormalized);
 
-    // Count mentions - if 0, reject
-    const titleMentions = (titleLower.match(new RegExp(competitor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')) || []).length;
-    const contentMentions = (contentLower.match(new RegExp(competitor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')) || []).length;
+    // Also check raw match
+    const rawTitleMatch = titleLower.includes(competitorLower);
+    const rawContentMatch = contentLower.includes(competitorLower);
 
-    if (titleMentions === 0 && contentMentions === 0) {
-      console.log(`[Search] REJECTING (no entity match): ${r.title.slice(0, 60)}...`);
-      return false;
+    if (!rawTitleMatch && !rawContentMatch) {
+      rejectedResults.push({ url: r.url, title: r.title, reason: "no_entity_match" });
+      continue;
     }
 
-    return inTitle || inContentStart;
-  });
+    // Use entity-aware content filter for additional verification
+    const entityFilterResult = filterContentForEntity(r.content, entity, r.url);
+
+    if (!entityFilterResult.accepted) {
+      rejectedResults.push({ url: r.url, title: r.title, reason: entityFilterResult.reason });
+      continue;
+    }
+
+    // Check if content has substantive information (not just name drop)
+    // Accept if: in title OR has 200+ chars of content mentioning entity
+    const entityCharCount = (r.content.match(new RegExp(competitorLower, "gi")) || []).length;
+    if (!inTitle && entityCharCount < 3) {
+      rejectedResults.push({ url: r.url, title: r.title, reason: "name_only_mention" });
+      continue;
+    }
+
+    relevantResults.push(r);
+  }
+
+  // Log rejections for debugging
+  if (rejectedResults.length > 0) {
+    console.log(`[Search] Rejected ${rejectedResults.length} results:`);
+    for (const rej of rejectedResults.slice(0, 5)) {
+      console.log(`  - ${rej.title.slice(0, 50)}... (${rej.reason})`);
+    }
+  }
+
+  // PROBLEM STATEMENT CHECK: Early detection of non-competitors
+  if (relevantResults.length > 0) {
+    const sampleContent = relevantResults[0].content;
+    const problemStatement = extractProblemStatement(sampleContent);
+    if (problemStatement && !overlapsWithBlostem(problemStatement)) {
+      console.log(`[Search] Problem statement doesn't overlap with Blostem: "${problemStatement.slice(0, 60)}..."`);
+      // Don't reject outright - let classification handle it
+    }
+  }
 
   console.log(`[Search] Entity-filtered results: ${relevantResults.length}/${allResults.length} relevant`);
 

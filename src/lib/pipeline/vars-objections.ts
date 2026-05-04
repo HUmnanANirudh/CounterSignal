@@ -6,40 +6,131 @@ import { validateCitationIntegrity } from "./signals";
 
 const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
 
+// Signal types for VARS context building
+type SignalType = "trust_risk" | "financial_health" | "regulatory" | "reliability" | "strategy_drift" | "pricing_complaint" | "support_issue" | "integration_issue" | "onboarding_delay" | "quality_issue" | "general";
+
+function classifySignalType(signal: Signal): SignalType {
+  if (signal.normalizedType && signal.normalizedType !== "general") {
+    return signal.normalizedType as SignalType;
+  }
+  const lower = signal.value.toLowerCase();
+  if (/fraud|scam|₹\s*\d+\s*(?:cr|crore)|money.*launder|security.*breach/i.test(lower)) return "trust_risk";
+  if (/rbi|regulatory|ban|suspended|compliance.*issue|penalty/i.test(lower)) return "regulatory";
+  if (/loss|declin|revenue.*drop|widen.*loss|net.*loss/i.test(lower)) return "financial_health";
+  if (/outage|service.*disrupt|downtime/i.test(lower)) return "reliability";
+  if (/pivot|restructur|shut.*down|layoff/i.test(lower)) return "strategy_drift";
+  if (/pricing|fee|expensive|overpriced|mdr/i.test(lower)) return "pricing_complaint";
+  if (/support|unresponsive|delay/i.test(lower)) return "support_issue";
+  if (/integration|api|difficult/i.test(lower)) return "integration_issue";
+  if (/onboard|slow.*start|weeks/i.test(lower)) return "onboarding_delay";
+  if (/buggy|broken|glitch/i.test(lower)) return "quality_issue";
+  return "general";
+}
+
+// Build structured VARS context from signals (deterministic, no LLM)
+function buildVarsContext(signals: Signal[], competitor: string): {
+  strengths: string[];
+  risks: string[];
+  costIssues: string[];
+  supportIssues: string[];
+  integrationIssues: string[];
+  regulatoryIssues: string[];
+} {
+  const strengths: string[] = [];
+  const risks: string[] = [];
+  const costIssues: string[] = [];
+  const supportIssues: string[] = [];
+  const integrationIssues: string[] = [];
+  const regulatoryIssues: string[] = [];
+
+  for (const signal of signals) {
+    const signalType = classifySignalType(signal);
+    const snippet = signal.value.length > 80 ? signal.value.slice(0, 80) + "..." : signal.value;
+
+    switch (signalType) {
+      case "trust_risk":
+        risks.push(`Trust: ${snippet}`);
+        break;
+      case "regulatory":
+        regulatoryIssues.push(`Regulatory: ${snippet}`);
+        risks.push(`Regulatory: ${snippet}`);
+        break;
+      case "financial_health":
+        risks.push(`Financial: ${snippet}`);
+        break;
+      case "reliability":
+        risks.push(`Reliability: ${snippet}`);
+        break;
+      case "strategy_drift":
+        risks.push(`Strategy: ${snippet}`);
+        break;
+      case "pricing_complaint":
+        costIssues.push(`Pricing: ${snippet}`);
+        break;
+      case "support_issue":
+        supportIssues.push(`Support: ${snippet}`);
+        break;
+      case "integration_issue":
+        integrationIssues.push(`Integration: ${snippet}`);
+        break;
+      case "onboarding_delay":
+        integrationIssues.push(`Onboarding: ${snippet}`);
+        break;
+      case "quality_issue":
+        risks.push(`Quality: ${snippet}`);
+        break;
+    }
+  }
+
+  return { strengths, risks, costIssues, supportIssues, integrationIssues, regulatoryIssues };
+}
+
+// Parse LLM JSON response safely
 function parseJsonResponse(text: string): { vars_layer: VARSLayer; objection_handling: ObjectionHandling[] } | null {
   let cleaned = text.trim();
-
-  // Strip markdown code blocks if present
   cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
 
-  // Find the first { and last } to extract JSON
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
 
   if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-    console.error(`[Vars] Could not find valid JSON boundaries`);
     return null;
   }
 
   cleaned = cleaned.slice(firstBrace, lastBrace + 1);
 
-  // Count braces to check balance
-  const openBraces = (cleaned.match(/\{/g) || []).length;
-  const closeBraces = (cleaned.match(/\}/g) || []).length;
-
-  if (openBraces !== closeBraces) {
-    console.error(`[Vars] Unbalanced braces: { = ${openBraces}, } = ${closeBraces}`);
-    return null;
-  }
-
   try {
     return JSON.parse(cleaned) as { vars_layer: VARSLayer; objection_handling: ObjectionHandling[] };
-  } catch (e: unknown) {
-    console.error(`[Vars] JSON parse failed: ${(e as Error).message}`);
+  } catch {
     return null;
   }
 }
 
+// Strip hallucinated patterns from VARS text
+function sanitizeVarsText(text: string): string {
+  if (!text) return "";
+  let cleaned = text
+    .replace(/\[signal_\d+\]/gi, "")
+    .replace(/\d+\s*%\s*capped\s*at\s*\$\d+/gi, "[specific pricing not available]")
+    .replace(/\d+\s*percent\s*(plus|\+)\s*\$0/gi, "[specific pricing not available]")
+    .replace(/\$\d+\s*percent/gi, "[specific pricing not available]")
+    .replace(/\.\s+(for|with|when|then|so|but|because)/gi, ". ")
+    .replace(/\s+\.\s*$/g, ".")
+    .trim();
+  if (!/[.!?]$/.test(cleaned)) cleaned += ".";
+  return cleaned;
+}
+
+// Validate VARS has signal grounding (not generic fluff)
+function isVarsGrounded(vars: VARSLayer): boolean {
+  const text = [vars.validate, vars.acknowledge, vars.reframe, vars.specify].join(" ");
+  // Must reference actual competitor signal content (not generic fintech terms)
+  const genericTerms = ["fintech", "payment gateway", "digital payment", "financial service", "payment platform"];
+  const isGeneric = genericTerms.some(term => text.toLowerCase().includes(term) && !text.includes("[citation"));
+  return !isGeneric;
+}
+
+// Constrain objections to valid citations
 function constrainObjections(
   objections: ObjectionHandling[],
   validCitationIds: string[]
@@ -47,31 +138,8 @@ function constrainObjections(
   return objections.map(obj => ({
     ...obj,
     counter: validateCitationIntegrity(obj.counter, validCitationIds),
-    evidence: validCitationIds.includes(obj.evidence) ? obj.evidence : validCitationIds[0] || "citation-1",
+    evidence: validCitationIds.includes(obj.evidence) ? obj.evidence : validCitationIds[0] || "",
   })).filter(obj => obj.counter.length > 10);
-}
-
-// Strip hallucinated pricing patterns from VARS text
-function sanitizeVarsText(text: string): string {
-  if (!text) return "";
-
-  let cleaned = text
-    // Remove patterns like "8% capped at $5" or "9% plus $0"
-    .replace(/\d+\s*%\s*capped\s*at\s*\$\d+/gi, "[specific pricing not available]")
-    .replace(/\d+\s*percent\s*(plus|\+)\s*\$0/gi, "[specific pricing not available]")
-    .replace(/\$\d+\s*percent/gi, "[specific pricing not available]")
-    // Fix broken sentence fragments
-    .replace(/\.\s+(for|with|when|then|so|but|because)/gi, ". ")
-    // Ensure complete sentences
-    .replace(/\s+\.\s*$/g, ".")
-    .trim();
-
-  // Ensure trailing period
-  if (!/[.!?]$/.test(cleaned)) {
-    cleaned += ".";
-  }
-
-  return cleaned;
 }
 
 export async function generateVarsAndObjections(
@@ -81,87 +149,90 @@ export async function generateVarsAndObjections(
   citations: Citation[],
   competitor?: string
 ): Promise<{ vars_layer: VARSLayer; objection_handling: ObjectionHandling[] }> {
-  const model = google("gemini-2.5-flash");
-
   const validCitationIds = citations.map(c => c.id);
 
-  console.log(`[Vars] Starting VARS generation`);
-  console.log(`[Vars] Signals: ${signals.length}`);
-  console.log(`[Vars] Citations: ${citations.length}`);
+  console.log(`[Vars] Processing ${signals.length} signals for ${competitor}`);
 
-  const signalsJson = signals.slice(0, 6).map((s) => ({
-    id: s.id,
-    type: s.type,
-    normalizedType: s.normalizedType || "general",
-    value: s.value.slice(0, 80),
-  }));
+  // SIGNAL GATE: If insufficient signals, return null VARS (not generic content)
+  if (signals.length < 2) {
+    console.log(`[Vars] Insufficient signals (${signals.length}) — returning null VARS`);
+    return {
+      vars_layer: {
+        validate: `Insufficient validated signals for ${competitor} — VARS withheld.`,
+        acknowledge: `Limited public data — recommend direct research.`,
+        reframe: `Cannot reliably identify tradeoffs without signal grounding.`,
+        specify: `Blostem infra-layer differentiation requires competitor signal data.`,
+      },
+      objection_handling: [],
+    };
+  }
 
-  const citationsList = citations.map((c) => `[${c.id}] ${c.title} (${c.source})`).join("\n");
+  // Build structured context from signals (deterministic, pre-LLM)
+  const ctx = buildVarsContext(signals, competitor || "competitor");
+  console.log(`[Vars] Context: ${ctx.risks.length} risks, ${ctx.costIssues.length} cost issues, ${ctx.regulatoryIssues.length} regulatory issues`);
 
-  const prompt = `Create VARS sales positioning for Blostem vs a fintech competitor.
+  // Use LLM only for compression/formatting, not ideation
+  const model = google("gemini-2.5-flash-lite");
 
-CONTEXT: Blostem is BFSI infrastructure (FD/RD/banking products), not a payment gateway. The competitor likely serves payment/payment orchestration use cases.
+  const prompt = `Create compressed VARS for Blostem vs ${competitor}. Output must be 1-2 lines per section MAX.
 
-COMPETITOR INTELLIGENCE:
-- Positioning: ${intelligence.positioning?.tagline || "Payment processing company"}
-- Pricing: ${intelligence.pricing_posture?.model || "unknown"} - ${intelligence.pricing_posture?.entryPrice || "opaque"} (${intelligence.pricing_posture?.opacity || "unknown"})
-- Complaints: ${intelligence.customer_truths?.keyComplaints?.join("; ") || "Various complaints"}
+COMPETITOR DATA (from signals):
+${ctx.risks.length > 0 ? `RISKS:\n${ctx.risks.slice(0, 3).map(r => `- ${r}`).join("\n")}` : ""}
+${ctx.costIssues.length > 0 ? `COST ISSUES:\n${ctx.costIssues.slice(0, 2).map(c => `- ${c}`).join("\n")}` : ""}
+${ctx.supportIssues.length > 0 ? `SUPPORT ISSUES:\n${ctx.supportIssues.slice(0, 2).map(s => `- ${s}`).join("\n")}` : ""}
+${ctx.integrationIssues.length > 0 ? `INTEGRATION ISSUES:\n${ctx.integrationIssues.slice(0, 2).map(i => `- ${i}`).join("\n")}` : ""}
+${ctx.regulatoryIssues.length > 0 ? `REGULATORY ISSUES:\n${ctx.regulatoryIssues.slice(0, 2).map(r => `- ${r}`).join("\n")}` : ""}
 
-BLOSTEM CONTEXT:
-- Strengths: ${blostemProfile.strengths.join("; ")}
-- Differentiators: ${blostemProfile.differentiators.join("; ")}
+INTELLIGENCE:
+- Positioning: ${intelligence.positioning?.tagline || "unknown"}
+- Pricing: ${intelligence.pricing_posture?.model || "unknown"} (${intelligence.pricing_posture?.entryPrice || "opaque"})
 
-CATEGORY-AWARE VARS RULES:
-- Validate: Why prospects choose the competitor for payment/payment orchestration needs
-- Acknowledge: What they do well in the payment layer
-- Reframe: Where payment-layer complexity creates hidden costs (MDR, settlement, reconciliation)
-- Specify: How infra-layer removes payment complexity for BFSI products
-
-CRITICAL COUNTER RULES:
-- All counters MUST include [citation-N] references where N is a valid citation ID from the CITATIONS section
-- Counters must reference real customer pain points from signals, not generic statements
-- Structure: acknowledge → concrete risk (signal-backed) → Blostem contrast
-- Example: "That works early, but as volumes grow MDR + settlement layers compound costs and reconciliation overhead — infra models remove both"
-
-IMPORTANT PRICING RULES:
-- Do NOT cite specific percentage fees (e.g., "9%", "8%") unless they appear in a citation
-- Do NOT claim "capped at $X" unless explicitly in source data
-- If competitor pricing is opaque or unclear, say "complex pricing structure" not specific numbers
-
-GROUNDING SIGNALS:
-${signalsJson.map((s) => `[${s.id}] (${s.normalizedType}): "${s.value}"`).join("\n")}
+RULES (CRITICAL):
+1. Each section = 1-2 lines MAX (under 50 words total for VARS)
+2. Reference specific signal content above — NOT generic fintech claims
+3. No repetition from other sections
+4. Validate: WHY buyer considers ${competitor} (from signals)
+5. Acknowledge: What ${competitor} actually does well (from positioning)
+6. Reframe: Where signals expose structural weakness
+7. Specify: Blostem wedge mapped to that weakness
+8. Citation format: [citation-N] for any claim
 
 CITATIONS:
-${citationsList}
+${citations.slice(0, 5).map(c => `[${c.id}] ${c.title}`).join("\n")}
 
-Generate VARS + objection handling. Return ONLY JSON:
-{
-  "vars_layer": {
-    "validate": "Why prospect considers competitor",
-    "acknowledge": "What competitor does well",
-    "reframe": "Competitor weaknesses/tradeoffs",
-    "specify": "What Blostem provides"
-  },
-  "objection_handling": [
-    {"objection": "concern", "counter": "response with [citation-N]", "evidence": "citation-N"}
-  ]
-}`;
+Return ONLY JSON (no markdown):
+{"vars_layer":{"validate":"1-2 lines","acknowledge":"1-2 lines","reframe":"1-2 lines","specify":"1-2 lines"},"objection_handling":[{"objection":"string","counter":"string [citation-N]","evidence":"citation-N"}]}`;
 
   console.log(`[Vars] Calling LLM...`);
 
-  const { text } = await generateText({
-    model,
-    prompt,
-    temperature: 0.3,
-    maxOutputTokens: 2048, // Reduced for latency
-  });
+  let text: string;
+  try {
+    const result = await generateText({
+      model,
+      prompt,
+      temperature: 0.15, // Very low for deterministic compression
+      maxOutputTokens: 1024, // Capped for compression
+    });
+    text = result.text;
+  } catch (err) {
+    console.error(`[Vars] LLM call failed: ${err instanceof Error ? err.message : String(err)}`);
+    return {
+      vars_layer: {
+        validate: `LLM call failed — VARS unavailable.`,
+        acknowledge: `Recommend direct research.`,
+        reframe: `Signal data exists but VARS generation failed.`,
+        specify: `Blostem infra-layer remains differentiated.`,
+      },
+      objection_handling: [],
+    };
+  }
 
-  console.log(`[Vars] LLM response preview: ${text.slice(0, 150)}...`);
+  console.log(`[Vars] LLM response: ${text.slice(0, 200)}...`);
 
   const parsed = parseJsonResponse(text);
 
   if (parsed) {
-    // Sanitize VARS text to remove hallucinated pricing patterns
+    // Sanitize and validate
     parsed.vars_layer = {
       validate: sanitizeVarsText(parsed.vars_layer.validate),
       acknowledge: sanitizeVarsText(parsed.vars_layer.acknowledge),
@@ -170,52 +241,61 @@ Generate VARS + objection handling. Return ONLY JSON:
     };
 
     parsed.objection_handling = constrainObjections(parsed.objection_handling || [], validCitationIds);
-    console.log(`[Vars] Successfully parsed`);
+
+    // Check if VARS is grounded (not generic fluff)
+    if (!isVarsGrounded(parsed.vars_layer)) {
+      console.warn(`[Vars] VARS appears generic — attempting rescue with signal-derived content`);
+      // Override with signal-derived VARS
+      parsed.vars_layer = deriveVarsFromSignals(signals, competitor || "competitor", citations);
+    }
+
+    console.log(`[Vars] Generated grounded VARS`);
     return parsed;
   }
 
-  console.error(`[Vars] Failed to parse JSON`);
+  // Parse failed — use deterministic signal-derived VARS
+  console.warn(`[Vars] Parse failed — using signal-derived VARS`);
+  return {
+    vars_layer: deriveVarsFromSignals(signals, competitor || "competitor", citations),
+    objection_handling: [],
+  };
+}
 
-  // Category-aware fallback VARS
-  const isGateway = intelligence.pricing_posture?.model?.includes("transaction") ||
-    (intelligence.positioning?.tagline || "").toLowerCase().includes("gateway");
+// Deterministic VARS derivation from signals (fallback when LLM fails)
+function deriveVarsFromSignals(signals: Signal[], competitor: string, citations: Citation[]): VARSLayer {
+  const ctx = buildVarsContext(signals, competitor);
 
-  if (isGateway) {
-    return {
-      vars_layer: {
-        validate: `Prospects choose ${competitor} for fast payment setup and broad UPI/card coverage.`,
-        acknowledge: `Strong payment platform with wide payment ecosystem reach.`,
-        reframe: `Transaction + MDR pricing compounds at scale and adds reconciliation overhead for multi-bank BFSI products.`,
-        specify: `Blostem replaces payment-layer complexity with infra-layer control — predictable costs, single API, native BFSI compliance.`,
-      },
-      objection_handling: [
-        {
-          objection: `We already use ${competitor}`,
-          counter: `That works early, but at scale MDR + settlement layers increase total cost and reconciliation overhead — infra models remove both cost unpredictability and operational drag.`,
-          evidence: "citation-1",
-        },
-        {
-          objection: "They seem cheaper",
-          counter: `Perceived competitive pricing at low volume, but costs scale with MDR + settlement layers — infra-layer provides predictable B2B pricing.`,
-          evidence: "citation-1",
-        },
-      ],
-    };
+  // Validate: why buyer considers competitor
+  let validate = `Teams consider ${competitor} for digital payments needs.`;
+  if (ctx.risks.length > 0) {
+    validate = `Buyer evaluating ${competitor} despite ${ctx.risks[0].split(":")[0].toLowerCase()} signals.`;
   }
 
-  return {
-    vars_layer: {
-      validate: `Prospects considering ${intelligence.positioning?.tagline || competitor} evaluate pricing and ease of use.`,
-      acknowledge: `${intelligence.positioning?.tagline || competitor} offers payment/payment orchestration capabilities.`,
-      reframe: `Transaction pricing plus settlement complexity compounds at scale for BFSI products.`,
-      specify: `Blostem provides infra-layer control with predictable costs, single API integration, and native BFSI compliance.`,
-    },
-    objection_handling: [
-      {
-        objection: "They seem cheaper",
-        counter: `Pricing complexity compounds at volume — infra-layer provides predictable B2B pricing without MDR overhead.`,
-        evidence: "citation-1",
-      },
-    ],
-  };
+  // Acknowledge: what competitor does well
+  let acknowledge = `${competitor} provides payment infrastructure.`;
+  if (ctx.integrationIssues.length > 0) {
+    acknowledge = `${competitor} offers developer-friendly integration.`;
+  }
+
+  // Reframe: where signals expose weakness
+  let reframe = "Signal data exposes specific risks — evaluate carefully.";
+  if (ctx.risks.length > 0) {
+    reframe = `${ctx.risks[0]}.`;
+  } else if (ctx.costIssues.length > 0) {
+    reframe = `${ctx.costIssues[0]}.`;
+  } else if (ctx.regulatoryIssues.length > 0) {
+    reframe = `${ctx.regulatoryIssues[0]}.`;
+  }
+
+  // Specify: Blostem wedge
+  let specify = "Blostem provides BFSI infrastructure with transparent pricing.";
+  if (ctx.costIssues.length > 0) {
+    specify = "Blostem offers transparent infra-layer pricing vs MDR opacity.";
+  } else if (ctx.regulatoryIssues.length > 0) {
+    specify = "Blostem handles BFSI compliance natively.";
+  } else if (ctx.integrationIssues.length > 0) {
+    specify = "Blostem's single API standardizes multi-bank complexity.";
+  }
+
+  return { validate, acknowledge, reframe, specify };
 }

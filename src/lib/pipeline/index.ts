@@ -154,11 +154,7 @@ export async function runPipeline(
   try {
     callbacks.onStageChange("searching", `Researching ${competitor}...`);
     const searchResult = await search(competitor);
-    const { citations, rawContent, debugInfo } = searchResult;
-
-    if (citations.length === 0) {
-      throw new Error("Insufficient search results. Try a more specific competitor name.");
-    }
+    let { citations, rawContent, debugInfo } = searchResult;
 
     // ENTITY CONFIDENCE CHECK: Fail fast if entity grounding is weak
     const entityConfidence = debugInfo?.entityConfidence ?? 0.5;
@@ -168,6 +164,10 @@ export async function runPipeline(
       callbacks.onChunk(renderMarkdown(insufficientCard));
       callbacks.onComplete(insufficientCard);
       return;
+    }
+
+    if (citations.length === 0) {
+      throw new Error("Insufficient search results. Try a more specific competitor name.");
     }
 
     if (debugInfo && debugInfo.domainCount < MIN_DOMAINS) {
@@ -334,32 +334,80 @@ export async function runPipeline(
     callbacks.onStageChange("extracting", "Extracting structured intelligence...");
     const extracted = await extract(preprocessed, competitor, citations);
 
+    // KILL SWITCH 3: Pricing + Complaint gate - if both missing, stop
+    if (preprocessed.pricing_candidates.length === 0 && preprocessed.complaint_sentences.length === 0) {
+      console.warn(`[Pipeline] KILL SWITCH 3: No pricing OR complaints — insufficient intelligence`);
+      const insufficientCard = generateInsufficientDataCard(competitor, debugInfo);
+      callbacks.onChunk(renderMarkdown(insufficientCard));
+      callbacks.onComplete(insufficientCard);
+      return;
+    }
+
     callbacks.onStageChange("deriving", "Deriving signals and citation mapping...");
     const { signals, sourceMap } = deriveSignals(preprocessed, citations);
+
+    // KILL SWITCH 2: Signal gate - if < 2 validated signals, STOP
+    if (signals.length < 2) {
+      console.warn(`[Pipeline] KILL SWITCH 2: Only ${signals.length} validated signals (< 2 required) — stopping`);
+      const insufficientCard = generateInsufficientDataCard(competitor, debugInfo);
+      callbacks.onChunk(renderMarkdown(insufficientCard));
+      callbacks.onComplete(insufficientCard);
+      return;
+    }
+
     const confidence = calculateConfidence(citations.length, signals, citations);
 
     if (confidence.score < 0.3) {
       dataGaps.push("low_confidence_signal");
     }
 
-    // If weak signals, disable generic VARS
-    if (signals.length < 3) {
-      console.log(`[Pipeline] Only ${signals.length} signals — disabling generic VARS, downgrading confidence`);
-      dataGaps.push("weak_signals_low_confidence");
-    }
+    // CONFIDENCE GATING: Remove sensitive content at low confidence
+    const suppressVARS = confidence.score < 0.7;
+    const suppressObjections = confidence.score < 0.7;
+    const suppressLandmines = confidence.score < 0.5;
+
+    console.log(`[Pipeline] Confidence: ${confidence.score} — VARS: ${suppressVARS ? "suppressed" : "shown"}, Objections: ${suppressObjections ? "suppressed" : "shown"}, Landmines: ${suppressLandmines ? "suppressed" : "shown"}`);
 
     callbacks.onStageChange("primitives", "Generating deal primitives for AE use...");
-    const raw_ae_battlecard = deriveDealPrimitives(extracted, signals, citations, competitor);
+    let raw_ae_battlecard = deriveDealPrimitives(extracted, signals, citations, competitor);
+
+    // Apply confidence gating to deal primitives
+    if (suppressObjections) {
+      raw_ae_battlecard.objection_handling = [];
+    }
+    if (suppressLandmines) {
+      raw_ae_battlecard.landmines = [];
+    }
+    if (suppressVARS) {
+      raw_ae_battlecard.quick_dismisses = [];
+    }
+
     const ae_battlecard = sanitizeForAE(raw_ae_battlecard);
 
     callbacks.onStageChange("vars", "Generating VARS positioning...");
-    const { vars_layer, objection_handling } = await generateVarsAndObjections(
-      extracted,
-      signals,
-      sourceMap,
-      citations,
-      competitor
-    );
+
+    // Skip VARS generation at low confidence
+    let vars_layer = { validate: "", acknowledge: "", reframe: "", specify: "" };
+    let objection_handling: Array<{ objection: string; counter: string; evidence: string }> = [];
+
+    if (suppressVARS) {
+      console.log(`[Pipeline] Skipping VARS due to low confidence (${confidence.score})`);
+    } else {
+      const varsResult = await generateVarsAndObjections(
+        extracted,
+        signals,
+        sourceMap,
+        citations,
+        competitor
+      );
+      vars_layer = varsResult.vars_layer;
+      // Map VARS objections to Battlecard format (evidence is string, not string[])
+      objection_handling = varsResult.objection_handling.map(obj => ({
+        objection: obj.objection,
+        counter: obj.counter,
+        evidence: Array.isArray(obj.evidence) ? obj.evidence[0] || "" : obj.evidence || "",
+      }));
+    }
 
     callbacks.onStageChange("rendering", "Rendering battlecard...");
     const recent_moves = extracted.recent_moves?.length ? filterRecentMoves(extracted.recent_moves) : [];
@@ -387,10 +435,14 @@ export async function runPipeline(
     callbacks.onChunk(markdown);
     callbacks.onComplete(battlecard);
   } catch (error) {
-    console.error(`[Pipeline] Pipeline error for ${competitor}: ${error instanceof Error ? error.message : String(error)}`);
-    const fallback = fallbackBattlecard(competitor, error instanceof Error ? error.message : String(error));
-    callbacks.onChunk(renderMarkdown(fallback));
-    callbacks.onComplete(fallback);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[Pipeline] Pipeline error for ${competitor}: ${errorMessage}`);
+
+    // EXTRACTION GATE: If extraction failed, return insufficient data card
+    // Do NOT use fallback - that propagates hallucinated structure
+    const insufficientCard = generateInsufficientDataCard(competitor, undefined);
+    callbacks.onChunk(renderMarkdown(insufficientCard));
+    callbacks.onComplete(insufficientCard);
   }
 }
 

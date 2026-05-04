@@ -2,7 +2,6 @@ import { generateText } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { tavily } from "@tavily/core";
 import type { PreprocessedData, ExtractedData } from "@/types";
-import { needsFallback } from "./preprocess";
 
 const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -37,11 +36,19 @@ function parseJsonResponse(text: string): ExtractedData | null {
     return null;
   }
 
+  // Extract candidate JSON string
   cleaned = cleaned.slice(firstBrace, lastBrace + 1);
 
-  // Try parsing - if fails, try progressively removing problematic trailing content
+  // Try parsing first - if it works, return immediately
+  try {
+    return JSON.parse(cleaned) as ExtractedData;
+  } catch {
+    // Continue to retry logic
+  }
+
+  // Try progressively removing trailing content to find valid JSON
   let attempts = 0;
-  const maxAttempts = 3;
+  const maxAttempts = 5;
 
   while (attempts < maxAttempts) {
     // Count braces to check balance
@@ -52,11 +59,11 @@ function parseJsonResponse(text: string): ExtractedData | null {
       try {
         return JSON.parse(cleaned) as ExtractedData;
       } catch {
-        // Try removing trailing problematic content
+        // Continue trimming
       }
     }
 
-    // Try trimming problematic trailing content
+    // Remove last character and try again
     cleaned = cleaned.slice(0, -1);
     attempts++;
   }
@@ -169,20 +176,14 @@ export async function extract(
 
   let processedData = preprocessed;
 
-  if (needsFallback(preprocessed)) {
-    console.log(`[Extract] Using fallback for additional content`);
-    const urlsToFetch = citations.slice(0, 3).map(c => c.url);
-    const fallbackContent = await Promise.all(urlsToFetch.map(fetchFallbackContent));
-    const fallbackText = fallbackContent.filter(Boolean).join("\n\n");
-    if (fallbackText) {
-      processedData = {
-        ...preprocessed,
-        raw_content: (preprocessed.raw_content + "\n\n---ADDITIONAL DATA---\n" + fallbackText).slice(0, 8000),
-      };
-    }
+  // NO FALLBACK: If extraction is weak, we STOP - not fill with additional content
+  // Fallback content injects noise and produces hallucinated battlecards
+  const hasWeakData = preprocessed.pricing_candidates.length === 0 && preprocessed.complaint_sentences.length === 0;
+  if (hasWeakData) {
+    console.log(`[Extract] Weak data detected (no pricing, no complaints) — extraction will likely produce minimal results`);
   }
 
-  const model = google("gemini-2.5-flash");
+  const model = google("gemini-2.5-flash-lite");
 
   const pricingInfo = preprocessed.pricing_candidates.slice(0, 4).join("\n") || "None found";
   const complaintInfo = preprocessed.complaint_sentences.slice(0, 4).join("\n") || "None found";
@@ -237,7 +238,7 @@ Return ONLY the JSON object. No markdown, no explanation.`;
         model,
         prompt,
         temperature: 0.05,
-        maxOutputTokens: 4096, // Reduced for latency
+        maxOutputTokens: 8192, // Increased to ensure full JSON completion
       });
       text = result.text;
     } catch (err) {
@@ -266,7 +267,8 @@ Return ONLY the JSON object. No markdown, no explanation.`;
     console.error(`[Extract] Attempt ${attempt + 1} failed`);
   }
 
-  // FALLBACK: Never crash the pipeline. Return safe fallback data.
-  console.error(`[Extract] FAILED after ${EXTRACTION_MAX_RETRIES + 1} attempts. Using fallback data.`);
-  return safeExtract(null, competitor);
+  // EXTRACTION GATE: No fallback - fail hard on invalid JSON
+  // This prevents hallucinated structure from propagating
+  console.error(`[Extract] EXTRACTION FAILED - returning error for pipeline gate`);
+  throw new Error(`Extraction incomplete: JSON parse failed. Entity may lack sufficient data.`);
 }
