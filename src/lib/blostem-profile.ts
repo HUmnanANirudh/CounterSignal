@@ -1,6 +1,6 @@
 export const blostemProfile = {
   name: "Blostem",
-  description: "Banking infrastructure layer for regulated products (FDs, RDs, credit)",
+  description: "Banking infrastructure layer for regulated products (FDs, RDs, credit) — the 'payment aggregator equivalent for banking products'",
 
   icp: [
     "Wealth apps and brokerages (e.g., Zerodha Coin)",
@@ -13,6 +13,7 @@ export const blostemProfile = {
     "Point-to-point bank integrations are slow, brittle, expensive",
     "Each bank has different APIs, compliance processes, reconciliation",
     "Maintenance overhead pulls focus from core product",
+    "FD onboarding friction — every bank has its own KYC flow not designed for FD-only customers",
   ],
 
   product: {
@@ -34,6 +35,8 @@ export const blostemProfile = {
     "Partner network of banks and NBFCs",
     "Co-creation model with partner institutions",
     "Focus on the unglamorous but critical infra work",
+    "Trusted by Zerodha — integrating FD on Coin",
+    "Backed by Rainmatter (Zerodha's VC arm)",
   ],
 
   differentiators: [
@@ -42,6 +45,7 @@ export const blostemProfile = {
     "Multi-bank FD access through single integration",
     "Purpose-built for the Indian wealth/savings market",
     "Not a bank itself — infrastructure layer, so partners maintain customer relationships",
+    "Launch FD products in weeks not months",
   ],
 
   pricing_model: "B2B SaaS / infrastructure pricing (not disclosed publicly)",
@@ -51,6 +55,9 @@ export const blostemProfile = {
     "Raised investment from Rainmatter (Zerodha's VC arm)",
     "Zerodha will integrate Blostem to offer FDs on Coin",
     "Building since 2019+ with founding team of Sandeep, Ravi, Uday, Pankaj",
+    "~$131 lakh crores in FDs with banks in India (~₹66 lakh crores from individuals) — massive market",
+    "Individual FD balances grew ~80% over 6 years across different rate cycles",
+    "Credit on UPI and FD-backed credit cards in development",
   ],
 
   avoid_competitor_when: [
@@ -64,6 +71,7 @@ export const blostemProfile = {
     "Prospect complains about reconciliation and maintenance overhead",
     "Prospect wants to offer FDs quickly without building bank integrations",
     "Prospect values standardization and compliance handles",
+    "Prospect is a brokerage or wealth app wanting to add FD products",
   ],
 
   VARS_context: {
@@ -71,6 +79,14 @@ export const blostemProfile = {
     acknowledge: "Blostem has proven infrastructure trusted by platforms like Zerodha and backed by Rainmatter.",
     reframe: "Building point-to-point integrations with each bank is slow, expensive, and distracts from your core product.",
     specify: "Blostem provides a single API for multi-bank FD access with standardized compliance, so you can launch in weeks not months.",
+  },
+
+  // From Rainmatter/Zerodha announcement (May 2026)
+  social_proof: {
+    investor: "Rainmatter (Zerodha's VC arm)",
+    integration_partner: "Zerodha Coin",
+    quote: "We have been speaking with the Blostem team for a while now, and what they are building is something the wealthtech ecosystem has quietly needed for years.",
+    market_context: "~$131 lakh crores in FDs with banks in India; retail FD balances grew ~80% in 6 years",
   },
 } as const;
 

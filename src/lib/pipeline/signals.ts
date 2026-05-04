@@ -81,33 +81,33 @@ const SIGNAL_NORMALIZATIONS: Record<string, string> = {
   "refund": "refund_issue",
 };
 
-// Auto-detect domain type using regex patterns - no hardcoded domain lists
+// Deterministic domain → type mapping (NOT content inference)
 function detectDomainType(url: string): "review" | "news" | "independent" | "forum" {
   const normalized = normalizeDomain(url);
   const lower = normalized.toLowerCase();
 
   // Review platforms
-  if (/^(g2|capterra|trustpilot|clutch|croz|goodfirms)/.test(lower)) {
+  if (lower.includes("g2") || lower.includes("capterra") || lower.includes("trustpilot") || lower.includes("clutch") || lower.includes("goodfirms")) {
     return "review";
   }
 
-  // Independent BFSI fintech media
-  if (/^(inc42|medianama|entrackr|dealstreet|vccircle|founderkit)/.test(lower)) {
+  // Indian startup news (independent)
+  if (lower.includes("inc42") || lower.includes("medianama") || lower.includes("entrackr") || lower.includes("dealstreet") || lower.includes("vccircle")) {
     return "independent";
   }
 
-  // News (general business/financial)
-  if (/^(moneycontrol|livemint|economictimes|forbes|bloomberg|techcrunch|reuters|ndtv|cnbc|hindu|business)/.test(lower)) {
+  // General business news
+  if (lower.includes("moneycontrol") || lower.includes("livemint") || lower.includes("economictimes") || lower.includes("forbes") || lower.includes("bloomberg") || lower.includes("techcrunch")) {
     return "news";
   }
 
   // Forums
-  if (/^(reddit|quora|stackoverflow|discord|forum)/.test(lower)) {
+  if (lower.includes("reddit") || lower.includes("quora") || lower.includes("stackoverflow")) {
     return "forum";
   }
 
-  // Social
-  if (/^(twitter|x|facebook|linkedin|instagram)/.test(lower)) {
+  // Social (treat as forum)
+  if (lower.includes("twitter") || lower.includes("x.com") || lower.includes("facebook") || lower.includes("linkedin")) {
     return "forum";
   }
 
@@ -247,15 +247,20 @@ export function deriveSignals(
     const hasCrossTypeAgreement = uniqueTypes.length >= 2;
     const isFeature = appearance.normalizedType === "feature";
 
-    // Filter out LOW severity signals that don't have cross-type agreement
-    if (!hasCrossTypeAgreement && !isFeature && !isHighSeverity) {
-      console.log(`[Signals] Filtering: ${key.slice(0, 40)}... (types: ${uniqueTypes.join(",")}, need ≥2)`);
+    // SINGLE STRONG SOURCE: If we have at least 2 citations from a single authoritative domain, accept
+    const hasSingleStrongSource = appearance.citationIds.length >= 2 && appearance.domains.size === 1;
+
+    // Relaxed validation: accept if HIGH severity, feature, cross-type agreement, OR single strong source
+    if (!hasCrossTypeAgreement && !isFeature && !isHighSeverity && !hasSingleStrongSource) {
+      console.log(`[Signals] Filtering: ${key.slice(0, 40)}... (types: ${uniqueTypes.join(",")}, need ≥2 or strong single source)`);
       continue;
     }
 
     // Log HIGH severity signal passing through
     if (isHighSeverity) {
       console.log(`[Signals] HIGH severity signal auto-validated: ${appearance.normalizedType} - ${key.slice(0, 40)}...`);
+    } else if (hasSingleStrongSource) {
+      console.log(`[Signals] Single strong source signal accepted: ${key.slice(0, 40)}... (${appearance.citationIds.length} citations)`);
     }
 
     const id = `signal_${signalIndex++}`;

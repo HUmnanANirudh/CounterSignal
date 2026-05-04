@@ -207,45 +207,44 @@ function scoreResult(result: { url: string; title: string; content: string; scor
 type SourceType = "independent" | "review" | "news" | "forum";
 
 // Auto-detect source type from domain using patterns - no hardcoded domain lists
-function getSourceType(url: string, competitor?: string): SourceType {
+// Deterministic domain → type mapping (NOT content inference)
+function getDomainType(url: string): "review" | "news" | "independent" | "forum" | "official" {
   const normalized = normalizeDomain(url);
   const lower = normalized.toLowerCase();
 
-  // Check if competitor domain (derived from company name) — classify as "news"
-  if (competitor) {
-    const competitorDomain = competitor.toLowerCase().replace(/\s+/g, "") + ".com";
-    if (lower.includes(competitorDomain)) {
-      return "news";
-    }
-  }
-
-  // Auto-detect from domain patterns using regex
-  // Review platforms (typically review sites)
-  if (/^(g2|capterra|trustpilot|clutch|croz|goodfirms)/.test(lower)) {
+  // Review platforms
+  if (lower.includes("g2") || lower.includes("capterra") || lower.includes("trustpilot") || lower.includes("clutch") || lower.includes("goodfirms")) {
     return "review";
   }
 
-  // Independent BFSI fintech media (Indian startup news focused on fintech)
-  if (/^(inc42|medianama|entrackr|dealstreet|vccircle|founderkit|startup|flutur|business|fintech)/.test(lower)) {
+  // Indian startup news (independent)
+  if (lower.includes("inc42") || lower.includes("medianama") || lower.includes("entrackr") || lower.includes("dealstreet") || lower.includes("vccircle")) {
     return "independent";
   }
 
-  // News (general business/financial news)
-  if (/^(moneycontrol|livemint|economictimes|forbes|bloomberg|techcrunch|reuters|ndtv|cnbc|hindu|business)/.test(lower)) {
+  // General business news
+  if (lower.includes("moneycontrol") || lower.includes("livemint") || lower.includes("economictimes") || lower.includes("forbes") || lower.includes("bloomberg") || lower.includes("techcrunch")) {
     return "news";
   }
 
   // Forums
-  if (/^(reddit|quora|stackoverflow|discord|forum)/.test(lower)) {
+  if (lower.includes("reddit") || lower.includes("quora") || lower.includes("stackoverflow")) {
     return "forum";
   }
 
-  // Social (real-time)
-  if (/^(twitter|x|facebook|linkedin|instagram)/.test(lower)) {
+  // Social (treat as forum)
+  if (lower.includes("twitter") || lower.includes("x.com") || lower.includes("facebook") || lower.includes("linkedin")) {
     return "forum";
   }
 
   return "news";
+}
+
+// Legacy alias for backwards compat
+function getSourceType(url: string, competitor?: string): "independent" | "review" | "news" | "forum" {
+  const type = getDomainType(url);
+  if (type === "official") return "news";
+  return type;
 }
 
 function selectDiversifiedResults(
@@ -313,18 +312,20 @@ function selectDiversifiedResults(
 }
 
 export function buildSearchQueries(competitor: string): string[] {
-  // Core queries for competitor research
+  // Core queries with ENTITY ANCHORING - force company name to appear in results
   return [
-    // Core: company overview
+    // Reddit/community sentiment (India-specific)
+    `site:reddit.com "${competitor}" india fintech`,
+    // Company introduction/news
     `"introducing ${competitor}"`,
+    // Core: company overview with entity anchoring
+    `"${competitor}" fintech india`,
     // Reviews (customer truths)
     `site:g2.com OR site:capterra.com "${competitor}" review`,
-    // Startup news (signal sources)
+    // Startup news (signal sources) - anchored
     `site:inc42.com OR site:medianama.com "${competitor}"`,
-    // Financial news
+    // Financial news - anchored
     `site:moneycontrol.com OR site:bloomberg.com "${competitor}" fintech`,
-    // Reddit/community sentiment
-    `site:reddit.com "${competitor}" india fintech`,
   ];
 }
 

@@ -184,6 +184,27 @@ export function detectCompetitorCategory(
   rawContent: string,
   tagline: string = ""
 ): ClassificationResult {
+  // SELF-COMPANY BYPASS: Blostem is the reference frame, not a candidate
+  if (competitorName.toLowerCase() === "blostem") {
+    return {
+      category: "UNKNOWN",
+      confidence: 1.0,
+      signals: ["self:blostem_reference"],
+      isCompetitor: false,
+      marketRole: "non_competitor",
+      reasoning: "Blostem is your company — internal profile, not a competitor",
+      capabilityProfile: {
+        hasAPI: false,
+        hasInfraRails: false,
+        ownsFinancialProduct: false,
+        isMarketplace: false,
+        isEndUserApp: false,
+        hasPaymentProcessing: false,
+        hasWalletBalance: false,
+      },
+    };
+  }
+
   const combined = `${tagline} ${rawContent} ${competitorName}`.toLowerCase();
 
   // Step 1: Extract capabilities (deterministic)

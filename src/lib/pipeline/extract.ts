@@ -22,6 +22,12 @@ function parseJsonResponse(text: string): ExtractedData | null {
   // Strip markdown code blocks if present
   cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
 
+  // Handle LLM error responses
+  if (cleaned.toLowerCase().includes("error") || cleaned.toLowerCase().includes("unable to") || cleaned.toLowerCase().includes("no competitor")) {
+    console.error(`[Extract] LLM returned error text: ${cleaned.slice(0, 100)}...`);
+    return null;
+  }
+
   // Find the first { and last } to extract JSON
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
@@ -64,6 +70,42 @@ function parseJsonResponse(text: string): ExtractedData | null {
     console.error(`[Extract] Sample: ${trimmed.slice(0, 200)}...`);
     return null;
   }
+}
+
+// Schema guard: ensure extracted data has required structure
+function safeExtract(data: ExtractedData | null, competitor: string): ExtractedData {
+  if (!data) {
+    return fallbackExtractedData(competitor);
+  }
+
+  return {
+    positioning: data.positioning || { tagline: "unknown", targetSegments: [], differentiators: [] },
+    pricing_posture: data.pricing_posture || { model: "unknown", entryPrice: "opaque", tiers: [], opacity: "opaque" },
+    recent_moves: data.recent_moves || [],
+    customer_truths: data.customer_truths || { positives: [], negatives: [], keyComplaints: [] },
+  };
+}
+
+function fallbackExtractedData(competitor: string): ExtractedData {
+  return {
+    positioning: {
+      tagline: `${competitor} operates in fintech. Limited public pricing data available.`,
+      targetSegments: [],
+      differentiators: [],
+    },
+    pricing_posture: {
+      model: "opaque",
+      entryPrice: "unknown",
+      tiers: [],
+      opacity: "opaque",
+    },
+    recent_moves: [],
+    customer_truths: {
+      positives: [],
+      negatives: [],
+      keyComplaints: [],
+    },
+  };
 }
 
 function validatePricingData(pricing: ExtractedData["pricing_posture"]): ExtractedData["pricing_posture"] {
@@ -189,12 +231,20 @@ Return ONLY the JSON object. No markdown, no explanation.`;
 
     console.log(`[Extract] Calling LLM...`);
 
-    const { text } = await generateText({
-      model,
-      prompt,
-      temperature: 0.05,
-      maxOutputTokens: 4096, // Reduced for latency
-    });
+    let text: string;
+    try {
+      const result = await generateText({
+        model,
+        prompt,
+        temperature: 0.05,
+        maxOutputTokens: 4096, // Reduced for latency
+      });
+      text = result.text;
+    } catch (err) {
+      console.error(`[Extract] LLM call failed: ${err instanceof Error ? err.message : String(err)}`);
+      lastError = err instanceof Error ? err : new Error(String(err));
+      continue; // Try again or fall through to fallback
+    }
 
     console.log(`[Extract] LLM response preview: ${text.slice(0, 150)}...`);
 
@@ -216,6 +266,7 @@ Return ONLY the JSON object. No markdown, no explanation.`;
     console.error(`[Extract] Attempt ${attempt + 1} failed`);
   }
 
-  console.error(`[Extract] FAILED after ${EXTRACTION_MAX_RETRIES + 1} attempts. Aborting pipeline.`);
-  throw lastError;
+  // FALLBACK: Never crash the pipeline. Return safe fallback data.
+  console.error(`[Extract] FAILED after ${EXTRACTION_MAX_RETRIES + 1} attempts. Using fallback data.`);
+  return safeExtract(null, competitor);
 }
