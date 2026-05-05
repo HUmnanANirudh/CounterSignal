@@ -80,8 +80,6 @@ export const blostemProfile = {
     reframe: "Building point-to-point integrations with each bank is slow, expensive, and distracts from your core product.",
     specify: "Blostem provides a single API for multi-bank FD access with standardized compliance, so you can launch in weeks not months.",
   },
-
-  // From Rainmatter/Zerodha announcement (May 2026)
   social_proof: {
     investor: "Rainmatter (Zerodha's VC arm)",
     integration_partner: "Zerodha Coin",

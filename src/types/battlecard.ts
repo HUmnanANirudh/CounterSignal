@@ -43,7 +43,7 @@ export interface ObjectionHandling {
 }
 
 // AE-Aligned Battlecard Types
-export type CompetitorType = "wallet" | "gateway" | "infra" | "NBFC" | "unknown";
+export type CompetitorType = string;
 
 export interface AEObjectionHandling {
   objection: string;
@@ -60,7 +60,7 @@ export interface SignalTrace {
 export interface AE_BATTLECARD {
   company_overview: string;
   competitor_type: CompetitorType;
-  category_contrast: string;  // e.g. "Razorpay = payments layer; Blostem = BFSI infra layer"
+  category_contrast: string;
   quick_dismisses: string[];
   objection_handling: AEObjectionHandling[];
   why_we_win: string[];
@@ -87,15 +87,6 @@ export interface Confidence {
   factors: string[];
 }
 
-export interface PreprocessedData {
-  pricing_candidates: string[];
-  review_blocks: string[];
-  complaint_sentences: string[];
-  feature_mentions: string[];
-  dates: string[];
-  raw_content: string;
-}
-
 export interface Battlecard {
   competitor: string;
   generatedAt: string;
@@ -106,14 +97,11 @@ export interface Battlecard {
   recent_moves: RecentMove[];
   customer_truths: CustomerTruths;
 
-  // Legacy VARS layer (kept for backwards compatibility)
   VARS_layer: VARSLayer;
   objection_handling: ObjectionHandling[];
 
-  // New AE-aligned layer
   AE_BATTLECARD: AE_BATTLECARD;
 
-  // Signal data for rendering control
   signals?: Signal[];
 
   sourceMap: Record<string, string[]>;
@@ -122,7 +110,7 @@ export interface Battlecard {
   dataGaps: string[];
 }
 
-interface Signal {
+export interface Signal {
   id: string;
   type: string;
   value: string;
@@ -134,27 +122,21 @@ export interface BattlecardInput {
   competitorName: string;
 }
 
-export interface NonCompetitorContext {
+export interface BattleCardViewProps {
   competitor: string;
-  category: string;
-  classification: string;
-  why_not_competitor: string[];
-  where_they_fit: string;
-  how_they_overlap: string[];
-  how_to_position_blostem: string;
-  disqualify_fast: string[];
-  signals: string[];
-}
-
-export interface ExtractedData {
-  positioning: { tagline: string; targetSegments: string[]; differentiators: string[] };
-  pricing_posture: { model: string; entryPrice: string; tiers: PricingTier[]; opacity: "clear" | "opaque" };
-  recent_moves: Array<{ name: string; date: string; impact: "high" | "medium" | "low" }>;
-  customer_truths: { positives: string[]; negatives: string[]; keyComplaints: string[] };
-}
-
-export interface BattlecardDisplayProps {
   markdown: string;
-  battlecard?: Battlecard;
-  onDownloadPdf?: () => void;
+  isLoading: boolean;
+}
+
+export interface SearchFormProps {
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: (value: string) => void;
+  isLoading: boolean;
+}
+
+
+export interface BattlecardResult {
+  markdown: string;
+  error?: string;
 }

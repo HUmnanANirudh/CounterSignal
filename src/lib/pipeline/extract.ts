@@ -1,7 +1,7 @@
 import { generateText } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { tavily } from "@tavily/core";
-import type { PreprocessedData, ExtractedData } from "@/types";
+import type { PreprocessedData, ExtractedIntelligence } from "@/types";
 
 const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -15,7 +15,7 @@ async function fetchFallbackContent(url: string): Promise<string> {
   }
 }
 
-function parseJsonResponse(text: string): ExtractedData | null {
+function parseJsonResponse(text: string): ExtractedIntelligence | null {
   let cleaned = text.trim();
 
   // Strip markdown code blocks if present
@@ -41,7 +41,7 @@ function parseJsonResponse(text: string): ExtractedData | null {
 
   // Try parsing first - if it works, return immediately
   try {
-    return JSON.parse(cleaned) as ExtractedData;
+    return JSON.parse(cleaned) as ExtractedIntelligence;
   } catch {
     // Continue to retry logic
   }
@@ -57,7 +57,7 @@ function parseJsonResponse(text: string): ExtractedData | null {
 
     if (openBraces === closeBraces) {
       try {
-        return JSON.parse(cleaned) as ExtractedData;
+        return JSON.parse(cleaned) as ExtractedIntelligence;
       } catch {
         // Continue trimming
       }
@@ -71,7 +71,7 @@ function parseJsonResponse(text: string): ExtractedData | null {
   // Final attempt with trimmed version
   const trimmed = cleaned.trim();
   try {
-    return JSON.parse(trimmed) as ExtractedData;
+    return JSON.parse(trimmed) as ExtractedIntelligence;
   } catch (e: unknown) {
     console.error(`[Extract] JSON parse failed after ${attempts} attempts: ${(e as Error).message}`);
     console.error(`[Extract] Sample: ${trimmed.slice(0, 200)}...`);
@@ -80,9 +80,9 @@ function parseJsonResponse(text: string): ExtractedData | null {
 }
 
 // Schema guard: ensure extracted data has required structure
-function safeExtract(data: ExtractedData | null, competitor: string): ExtractedData {
+function safeExtract(data: ExtractedIntelligence | null, competitor: string): ExtractedIntelligence {
   if (!data) {
-    return fallbackExtractedData(competitor);
+    return fallbackExtractedIntelligence(competitor);
   }
 
   return {
@@ -93,7 +93,7 @@ function safeExtract(data: ExtractedData | null, competitor: string): ExtractedD
   };
 }
 
-function fallbackExtractedData(competitor: string): ExtractedData {
+function fallbackExtractedIntelligence(competitor: string): ExtractedIntelligence {
   return {
     positioning: {
       tagline: `${competitor} operates in fintech. Limited public pricing data available.`,
@@ -115,7 +115,7 @@ function fallbackExtractedData(competitor: string): ExtractedData {
   };
 }
 
-function validatePricingData(pricing: ExtractedData["pricing_posture"]): ExtractedData["pricing_posture"] {
+function validatePricingData(pricing: ExtractedIntelligence["pricing_posture"]): ExtractedIntelligence["pricing_posture"] {
   // Reject transaction model with fixed dollar entry price
   if (pricing.model?.toLowerCase().includes("transaction")) {
     if (pricing.entryPrice && pricing.entryPrice.includes("$") && !pricing.entryPrice.includes("%")) {
@@ -127,7 +127,7 @@ function validatePricingData(pricing: ExtractedData["pricing_posture"]): Extract
 }
 
 // Validate extracted data for hallucinations
-function validateExtractedData(data: ExtractedData): ExtractedData {
+function validateExtractedIntelligence(data: ExtractedIntelligence): ExtractedIntelligence {
   // Check for hallucinated pricing patterns
   const entryPrice = data.pricing_posture?.entryPrice || "";
 
@@ -168,7 +168,7 @@ export async function extract(
   preprocessed: PreprocessedData,
   competitor: string,
   citations: Array<{ url: string; source?: string }>
-): Promise<ExtractedData> {
+): Promise<ExtractedIntelligence> {
   console.log(`[Extract] Starting extraction for ${competitor}`);
   console.log(`[Extract] Pricing candidates: ${preprocessed.pricing_candidates.length}`);
   console.log(`[Extract] Complaints: ${preprocessed.complaint_sentences.length}`);
@@ -253,7 +253,7 @@ Return ONLY the JSON object. No markdown, no explanation.`;
 
     if (parsed) {
       // Validate and sanitize pricing
-      const validated = validateExtractedData(parsed);
+      const validated = validateExtractedIntelligence(parsed);
       const finalPricing = validatePricingData(validated.pricing_posture);
       validated.pricing_posture = finalPricing;
 

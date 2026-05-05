@@ -1,5 +1,5 @@
-import type { Citation, Signal, ExtractedIntelligence} from "@/types";
-export type CompetitorType = "wallet" | "gateway" | "infra" | "NBFC" | "unknown";
+import type { Citation, ExtractedIntelligence, Signal } from "@/types";
+import type { CompetitorType } from "@/types/battlecard";
 
 export interface DealPrimitives {
   company_overview: string;

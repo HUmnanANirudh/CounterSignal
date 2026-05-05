@@ -1,12 +1,19 @@
-// Entity resolution layer - STRICT binding between query and entity
-// No fuzzy matching - query must match entity name/aliases OR return unknown
+// Entity resolution - scoring-based, no hardcoded database
+// Resolution: normalize → score match → return entity or unknown
+
+import type { BFSICategory } from "@/types/entity";
+import { getMarketRole } from "@/types/entity";
 
 export interface ResolvedEntity {
   canonicalName: string;
   aliases: string[];
   domain: string | null;
-  category_hint: string;
+  categoryHint: BFSICategory;
   confidence: number;
+  classification: {
+    primaryRole: "competitor" | "non_competitor" | "supply_side";
+    category: BFSICategory;
+  };
 }
 
 export interface EntityResolutionResult {
@@ -14,408 +21,241 @@ export interface EntityResolutionResult {
   is_verified: boolean;
   match_sources: string[];
   rejection_reasons: string[];
+  entityConfidence: number; // Scoring-based confidence
 }
 
-// Known entity database - classification overrides for problematic cases
-const CLASSIFICATION_OVERRIDES: Record<string, { primary_role: string; category: string }> = {
-  "dodopayments": { primary_role: "competitor", category: "payment_MoR" },
-  "dodo": { primary_role: "competitor", category: "payment_MoR" },
-  "dodo payments": { primary_role: "competitor", category: "payment_MoR" },
-};
+// Noise words to remove
+const NOISE_WORDS = ["inc", "ltd", "llc", "pvt", "private", "fintech", "app", "payments", "payment", "india", "indian", "fintech", "tech", "solutions", "services", "group"];
 
-// Also add to known entities for proper entity resolution
-const KNOWN_ENTITIES_EXTRA: Record<string, ResolvedEntity> = {
-  "dodopayments": {
-    canonicalName: "Dodo Payments",
-    aliases: ["dodo payments", "dodo", "dodopayments"],
-    domain: null,
-    category_hint: "payment_MoR",
-    confidence: 1.0,
-  },
-};
+// Normalize query - lowercase, remove noise
+export function normalizeQuery(query: string): { normalized: string; aliases: string[] } {
+  let cleaned = query.toLowerCase().trim();
 
-// Known entities with EXACT matching only
-const KNOWN_ENTITIES: Record<string, ResolvedEntity> = {
-  "razorpay": {
-    canonicalName: "Razorpay",
-    aliases: ["razorpay", "razor pay", "razorpay payments"],
-    domain: "razorpay.com",
-    category_hint: "payment_gateway",
-    confidence: 1.0,
-  },
-  "paytm": {
-    canonicalName: "Paytm",
-    aliases: ["paytm", "paytm payments", "one97 communications"],
-    domain: "paytm.com",
-    category_hint: "wallet/gateway",
-    confidence: 1.0,
-  },
-  "stripe": {
-    canonicalName: "Stripe",
-    aliases: ["stripe", "stripe payments", "stripe india"],
-    domain: "stripe.com",
-    category_hint: "payment_gateway",
-    confidence: 1.0,
-  },
-  "cashfree": {
-    canonicalName: "Cashfree",
-    aliases: ["cashfree", "cash free", "cashfree payments"],
-    domain: "cashfree.com",
-    category_hint: "payment_gateway",
-    confidence: 1.0,
-  },
-  "payu": {
-    canonicalName: "PayU",
-    aliases: ["payu", "payu india", "payu payments"],
-    domain: "payu.in",
-    category_hint: "payment_gateway",
-    confidence: 1.0,
-  },
-  "pine labs": {
-    canonicalName: "PineLabs",
-    aliases: ["pine labs", "pine labs payments", "pinelabs"],
-    domain: "pinelabs.com",
-    category_hint: "payment_gateway",
-    confidence: 1.0,
-  },
-  "easebuzz": {
-    canonicalName: "Easebuzz",
-    aliases: ["easebuzz", "ease buzz"],
-    domain: "easebuzz.in",
-    category_hint: "payment_gateway",
-    confidence: 1.0,
-  },
-  "billdesk": {
-    canonicalName: "Billdesk",
-    aliases: ["billdesk", "bill desk"],
-    domain: "billdesk.com",
-    category_hint: "payment_gateway",
-    confidence: 1.0,
-  },
-  "juspay": {
-    canonicalName: "Juspay",
-    aliases: ["juspay", "jus pay"],
-    domain: "juspay.in",
-    category_hint: "payment_gateway",
-    confidence: 1.0,
-  },
-  "setu": {
-    canonicalName: "Setu",
-    aliases: ["setu", "setu.co", "ssw india"],
-    domain: "setu.co",
-    category_hint: "api_infra",
-    confidence: 1.0,
-  },
-  "mojo": {
-    canonicalName: "Mojo",
-    aliases: ["mojo", "mojo lent"],
-    domain: "mojolend.com",
-    category_hint: "lender",
-    confidence: 1.0,
-  },
-  "lent": {
-    canonicalName: "Lent",
-    aliases: ["lent", "lent capital"],
-    domain: "lentfinance.com",
-    category_hint: "lender",
-    confidence: 1.0,
-  },
-};
-
-// Normalize for comparison - strict normalization
-function normalizeQuery(query: string): string {
-  return query.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ");
-}
-
-// Check if query exactly matches entity key or aliases (no fuzzy)
-// FIXED: Word-boundary matching only, no substring false positives
-function isExactMatch(query: string, entity: ResolvedEntity): boolean {
-  const normalizedQuery = normalizeQuery(query);
-
-  // Check canonical key - exact match only
-  const normalizedKey = normalizeQuery(entity.canonicalName);
-  if (normalizedQuery === normalizedKey) return true;
-
-  // Check aliases - only exact match (no substring matching)
-  // Substring matching causes "dodo" to match "modoc" in "razorpay"
-  for (const alias of entity.aliases) {
-    const normalizedAlias = normalizeQuery(alias);
-    // Only accept full alias match, no partial/substring
-    if (normalizedQuery === normalizedAlias) return true;
+  for (const noise of NOISE_WORDS) {
+    cleaned = cleaned.replace(new RegExp(`\\b${noise}\\b`, "gi"), "");
   }
+  cleaned = cleaned.replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
 
-  return false;
+  const aliases = [
+    cleaned.replace(/\s+/g, ""), // concatenated
+    ...cleaned.split(/\s+/).filter(w => w.length > 2), // individual words
+  ];
+
+  return { normalized: cleaned, aliases: [...new Set(aliases)] };
 }
 
-// Merge known entities with extras
-const ALL_ENTITIES = { ...KNOWN_ENTITIES, ...KNOWN_ENTITIES_EXTRA };
+// Compute entity confidence as scoring model
+export function computeEntityConfidence(query: string): number {
+  const { normalized, aliases } = normalizeQuery(query);
 
-// PRIMARY resolution function - STRICT binding
-// FIXED: No cross-request contamination - query must EXACTLY match entity name/aliases
+  // Simple scoring: shorter queries = higher confidence for exact match
+  // Longer queries = more ambiguous
+  if (normalized.length <= 5) {
+    return 0.9; // Short name, high confidence if matched
+  } else if (normalized.length <= 10) {
+    return 0.7; // Medium name
+  } else {
+    return 0.5; // Long name, more uncertain
+  }
+}
+
+// PRIMARY resolution function - scoring model, no database
 export function resolveEntity(query: string): EntityResolutionResult {
-  const normalizedQuery = normalizeQuery(query);
+  const { normalized, aliases } = normalizeQuery(query);
 
   const result: EntityResolutionResult = {
     resolved: null,
     is_verified: false,
     match_sources: [],
     rejection_reasons: [],
+    entityConfidence: computeEntityConfidence(query),
   };
 
-  // STRICT: Only return entity if EXACT match on name or alias
-  // No substring matching - "dodo" cannot match "modoc" or "dodopayments" partial
-  for (const [key, entity] of Object.entries(ALL_ENTITIES)) {
-    if (isExactMatch(query, entity)) {
-      result.resolved = entity;
-      result.is_verified = true;
-      result.match_sources.push(`exact_match:${key}`);
-      return result;
+  // If query is meaningful (not just noise), return resolved entity
+  if (normalized.length >= 3) {
+    result.resolved = {
+      canonicalName: query.trim(),
+      aliases,
+      domain: null,
+      categoryHint: "payment_gateway", // Default - will be classified later
+      confidence: result.entityConfidence,
+      classification: { primaryRole: "competitor", category: "payment_gateway" },
+    };
+    result.match_sources.push(`scored:${normalized}`);
+
+    // Check for common patterns to hint category
+    if (/\b(groww|zerodha|upstox|broker|trading|stock)\b/i.test(query)) {
+      result.resolved.categoryHint = "broker";
+      result.resolved.classification = { primaryRole: "non_competitor", category: "broker" };
+    } else if (/\b(shriram|bajaj|nbfc|loan|lending)\b/i.test(query)) {
+      result.resolved.categoryHint = "nbfc";
+      result.resolved.classification = { primaryRole: "supply_side", category: "nbfc" };
+    } else if (/\b(paytm|wallet|mobikwik)\b/i.test(query)) {
+      result.resolved.categoryHint = "wallet";
+      result.resolved.classification = { primaryRole: "competitor", category: "wallet" };
+    } else if (/\b(setu|decentro|yap|open\.?tech|banking.?api)\b/i.test(query)) {
+      result.resolved.categoryHint = "banking_api_infra";
+      result.resolved.classification = { primaryRole: "competitor", category: "banking_api_infra" };
+    } else if (/\b(dodo|paddle|merchant.?of.?record|mor)\b/i.test(query)) {
+      result.resolved.categoryHint = "merchant_of_record";
+      result.resolved.classification = { primaryRole: "competitor", category: "merchant_of_record" };
     }
+
+    return result;
   }
 
-  // No exact match found - return UNKNOWN entity based on INPUT QUERY ONLY
-  // DO NOT fallback to previous entity from cache or context
-  result.resolved = {
-    canonicalName: query.trim(),
-    aliases: [normalizedQuery],
-    domain: null,
-    category_hint: "unknown",
-    confidence: 0.3, // Low confidence - unverified entity
-  };
-  result.rejection_reasons.push("no_exact_entity_match");
-
+  // Too short/ambiguous
+  result.rejection_reasons.push("query_too_short_or_ambiguous");
   return result;
 }
 
-// STRICT GUARD: Verify resolved entity matches input
-// Abort if entity name doesn't match query (prevents Razorpay bleed into Dodo)
-export function verifyEntityBinding(query: string, resolvedEntity: ResolvedEntity): boolean {
-  const queryNorm = normalizeQuery(query);
-  const entityNameNorm = normalizeQuery(resolvedEntity.canonicalName);
+// Verify entity binding (guard against cross-contamination)
+export function verifyEntityBinding(query: string, resolved: ResolvedEntity): boolean {
+  const { normalized: queryNorm } = normalizeQuery(query);
+  const resolvedNorm = resolved.canonicalName.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-  // Check canonical name
-  if (queryNorm === entityNameNorm) return true;
-
-  // Check aliases - must be exact match
-  for (const alias of resolvedEntity.aliases) {
-    const aliasNorm = normalizeQuery(alias);
-    if (queryNorm === aliasNorm) return true;
-  }
-
-  return false;
+  return queryNorm === resolvedNorm ||
+    queryNorm.includes(resolvedNorm) ||
+    resolvedNorm.includes(queryNorm);
 }
 
-// Get classification override if exists
-export function getClassificationOverride(query: string): { primary_role: string; category: string } | null {
-  const normalizedQuery = normalizeQuery(query);
-
-  // Check for direct match
-  if (CLASSIFICATION_OVERRIDES[normalizedQuery]) {
-    return CLASSIFICATION_OVERRIDES[normalizedQuery];
-  }
-
-  // Check partial matches
-  for (const [key, override] of Object.entries(CLASSIFICATION_OVERRIDES)) {
-    if (normalizedQuery.includes(key) || key.includes(normalizedQuery)) {
-      return override;
-    }
-  }
-
-  return null;
-}
-
-// Verify entity match for content filtering (STRICT)
-// FIXED: Accept fuzzy matches for unverified entities to recover context
-export function verifyEntityMatch(content: string, entity: ResolvedEntity, query: string): { matches: boolean; reason: string } {
-  const contentLower = content.toLowerCase();
-  const queryNormalized = normalizeQuery(query);
-  const entityNameNormalized = normalizeQuery(entity.canonicalName);
-
-  // Check if query appears in content (case-insensitive)
-  // Query is the GROUND TRUTH - content must match the query, not a fuzzy entity name
-  if (contentLower.includes(queryNormalized)) {
-    return { matches: true, reason: "query_match" };
-  }
-
-  // For verified entities (confidence >= 1.0), also check entity name
-  if (entity.confidence >= 1.0 && contentLower.includes(entityNameNormalized)) {
-    return { matches: true, reason: "entity_name_match" };
-  }
-
-  // FIXED: For unverified/low-confidence entities, accept fuzzy matches
-  // Check if any alias matches (handles "dodo payments" → "dodo" partial)
-  if (entity.confidence < 1.0) {
-    for (const alias of entity.aliases) {
-      const aliasNorm = normalizeQuery(alias);
-      // Accept if content contains alias as substring (fuzzy match for early-stage companies)
-      if (contentLower.includes(aliasNorm) || contentLower.includes(alias)) {
-        return { matches: true, reason: "alias_fuzzy_match" };
-      }
-    }
-    // Also accept if query is contained within content
-    if (queryNormalized.length >= 3 && contentLower.includes(queryNormalized.slice(0, -1))) {
-      return { matches: true, reason: "query_partial_match" };
-    }
-    return { matches: false, reason: `low_confidence_entity_no_query_match` };
-  }
-
-  return { matches: false, reason: "no_match" };
-}
-
-// Entity-aware content filter
-// FIXED: Relaxed filtering for unverified entities to recover early-stage company data
-export function filterContentForEntity(
+// Soft filter - scoring model instead of hard drops
+export function scoreContentMatch(
   content: string,
   entity: ResolvedEntity,
-  sourceUrl: string,
   query: string
-): { accepted: boolean; reason: string } {
-  const queryNormalized = normalizeQuery(query);
+): { score: number; accepted: boolean; reason: string } {
+  const { normalized: queryNorm } = normalizeQuery(query);
+  const contentLower = content.toLowerCase();
 
-  // FIXED: Unverified entities get LENIENT filtering
-  // We want to recover as much context as possible for startups/early-stage companies
-  if (entity.confidence < 1.0) {
-    const contentLower = content.toLowerCase();
+  let score = 0.5; // Base score
 
-    // Accept if content mentions the query in any form
-    if (contentLower.includes(queryNormalized)) {
-      return { accepted: true, reason: "unverified_query_match" };
-    }
-
-    // Accept if content mentions any alias or partial query
-    for (const alias of entity.aliases) {
-      if (contentLower.includes(alias.toLowerCase())) {
-        return { accepted: true, reason: "unverified_alias_match" };
-      }
-    }
-
-    // Lenient: accept content that has 2+ mentions anywhere (not just start)
-    const charCount = (contentLower.match(new RegExp(queryNormalized, "g")) || []).length;
-    if (charCount >= 2) {
-      return { accepted: true, reason: "unverified_multiple_mentions" };
-    }
-
-    // Final leniency: accept if content is long and has the query near the start
-    if (content.length > 200 && contentLower.slice(0, 500).includes(queryNormalized.slice(0, -1))) {
-      return { accepted: true, reason: "unverified_early_mention" };
-    }
-
-    // Reject only if truly no match
-    return { accepted: false, reason: "unverified_no_query_match" };
+  // Exact match
+  if (contentLower.includes(queryNorm)) {
+    score += 1;
   }
 
-  // Verified entity - strict check
-  const matchResult = verifyEntityMatch(content, entity, query);
-  if (!matchResult.matches) {
-    return { accepted: false, reason: matchResult.reason };
+  // Entity name match
+  const entityNameNorm = entity.canonicalName.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (entityNameNorm && entityNameNorm !== queryNorm && contentLower.includes(entityNameNorm)) {
+    score += 0.5;
   }
 
-  // Additional check: content must have substantive mention, not just name
-  const entityCharCount = (content.toLowerCase().match(new RegExp(queryNormalized, "g")) || []).length;
-
-  if (entityCharCount < 2 && !sourceUrl.includes(entity.domain || "")) {
-    return { accepted: false, reason: "name_only_mention" };
+  // Alias match
+  for (const alias of entity.aliases) {
+    if (contentLower.includes(alias.toLowerCase())) {
+      score += 0.3;
+      break;
+    }
   }
 
-  return { accepted: true, reason: matchResult.reason };
+  // Hard rule: Never go below 5 documents total
+  // This is enforced at search level
+
+  return {
+    score,
+    accepted: score >= 0.3,
+    reason: score >= 0.8 ? "strong_match" : score >= 0.5 ? "good_match" : score >= 0.3 ? "weak_match" : "poor_match",
+  };
 }
 
-// Extract business model hints from content for classification
-// FIXED: Added more MoR detection patterns
+// Extract business model hints - scoring model for classification
 export function extractBusinessModelHints(content: string): {
-  hasMoR: boolean;
-  hasInfra: boolean;
-  hasPayments: boolean;
-  hasIssuer: boolean;
-  hasAggregator: boolean;
+  paymentLayer: number;
+  bankingInfra: number;
+  lending: number;
+  wealth: number;
+  insurance: number;
+  distribution: number;
 } {
   const lower = content.toLowerCase();
 
   return {
-    hasMoR: /merchant of record|mo\.?r\.?|global tax|international payments|合规|tax compliance|global pay|global payment/i.test(lower),
-    hasInfra: /api\.?|infrastructure|rails|banking as a service|baas|account aggregator/i.test(lower),
-    hasPayments: /payment gateway|checkout|upi|mdr|transaction/i.test(lower),
-    hasIssuer: /fixed deposit|fd\.?|recurring deposit|nbfc|loan product/i.test(lower),
-    hasAggregator: /marketplace|compare|aggregate|broker|loan marketplace/i.test(lower),
+    paymentLayer: (
+      (/\b(payment\s*gateway|checkout|upi|mdr|transaction|payment\s*processor)\b/i.test(lower) ? 2 : 0) +
+      (/\b(wallet|digital\s*wallet|mobile\s*wallet)\b/i.test(lower) ? 1.5 : 0) +
+      (/\b(merchant\s*of\s*record|global\s*tax|international\s*payment)\b/i.test(lower) ? 2 : 0) +
+      (/\b(phonepe|google\s*pay|tez)\b/i.test(lower) ? 1 : 0) +
+      (/\b(payment\s*orchestration|juspay)\b/i.test(lower) ? 1.5 : 0)
+    ),
+    bankingInfra: (
+      (/\b(api\s*banking|banking\s*api|bank\s*integration)\b/i.test(lower) ? 2 : 0) +
+      (/\b(account\s*aggregator|AA\b|upi\s*stack)\b/i.test(lower) ? 2 : 0) +
+      (/\b(embedded\s*finance|neo\s*banking\s*infra)\b/i.test(lower) ? 1.5 : 0) +
+      (/\b(setu|decentro|yap|open\.?tech)\b/i.test(lower) ? 2 : 0)
+    ),
+    lending: (
+      (/\b(nbfc|non\s*banking\s*finance|loan\s*provider)\b/i.test(lower) ? 2 : 0) +
+      (/\b(personal\s*loan|business\s*loan|lending)\b/i.test(lower) ? 1.5 : 0) +
+      (/\b(bnpl|buy\s*now\s*pay\s*later)\b/i.test(lower) ? 1 : 0) +
+      (/\b(shriram|bajaj\s*finance)\b/i.test(lower) ? 2 : 0) +
+      (/\b(fd\s*interest|fixed\s*deposit|rd\s*interest)\b/i.test(lower) ? 1.5 : 0)
+    ),
+    wealth: (
+      (/\b(stockbroker|trading\s*platform|brokerage|zerodha|upstox)\b/i.test(lower) ? 2 : 0) +
+      (/\b(groww|wealth\s*platform|mutual\s*fund)\b/i.test(lower) ? 1.5 : 0) +
+      (/\b(demat|investing|robo\s*advisor)\b/i.test(lower) ? 1 : 0)
+    ),
+    insurance: (
+      (/\b(insurtech|insurance\s*aggregator|policy\s*bazaar)\b/i.test(lower) ? 2 : 0) +
+      (/\b(acko|digit|insurance)\b/i.test(lower) ? 1 : 0)
+    ),
+    distribution: (
+      (/\b(marketplace|loan\s*marketplace|comparison)\b/i.test(lower) ? 1.5 : 0) +
+      (/\b(paisabazaar|bankbazaar)\b/i.test(lower) ? 2 : 0) +
+      (/\b(embedded\s*distribution|B2B\s*SaaS)\b/i.test(lower) ? 1 : 0)
+    ),
   };
 }
 
-// Infer category from business model hints
-// FIXED: NEVER return unknown if ANY signal exists - provide best guess
-export function inferCategoryFromHints(hints: ReturnType<typeof extractBusinessModelHints>): {
-  category: string;
+// Classify using deterministic scoring model
+export function classifyFromHints(hints: ReturnType<typeof extractBusinessModelHints>): {
+  category: BFSICategory;
   confidence: number;
   reasoning: string;
 } {
-  const { hasMoR, hasInfra, hasPayments, hasIssuer, hasAggregator } = hints;
+  const scores: Array<{ category: BFSICategory; score: number; label: string }> = [
+    { category: "payment_gateway", score: hints.paymentLayer, label: "Payment Gateway" },
+    { category: "banking_api_infra", score: hints.bankingInfra, label: "Banking API Infra" },
+    { category: "nbfc", score: hints.lending, label: "NBFC/Lending" },
+    { category: "broker", score: hints.wealth, label: "Broker/Wealth" },
+    { category: "marketplace", score: hints.distribution, label: "Marketplace" },
+    { category: "insurtech", score: hints.insurance, label: "Insurance" },
+  ];
 
-  // MoR detection (high confidence if present)
-  if (hasMoR && (hasPayments || hasInfra)) {
-    return {
-      category: "payment_MoR",
-      confidence: 0.85,
-      reasoning: "Merchant of Record pattern detected with payment/infrastructure focus"
-    };
-  }
+  scores.sort((a, b) => b.score - a.score);
+  const top = scores[0];
 
-  // Infrastructure detection
-  if (hasInfra && !hasIssuer) {
-    return {
-      category: "api_infra",
-      confidence: 0.8,
-      reasoning: "API infrastructure pattern detected"
-    };
-  }
-
-  // Payment gateway (only if NOT MoR)
-  if (hasPayments && !hasMoR && !hasInfra) {
+  // Rule: Never return unknown if any signal exists
+  if (top.score < 0.5) {
     return {
       category: "payment_gateway",
-      confidence: 0.75,
-      reasoning: "Payment processing pattern detected"
+      confidence: 0.3,
+      reasoning: `No strong signals (top: ${top.label} at ${top.score.toFixed(1)}). Defaulting to payment_gateway.`,
     };
   }
 
-  // Issuer/NBFC
-  if (hasIssuer) {
-    return {
-      category: "issuer",
-      confidence: 0.8,
-      reasoning: "FD/RD/NBFC product issuer pattern detected"
-    };
-  }
-
-  // Aggregator
-  if (hasAggregator) {
-    return {
-      category: "aggregator",
-      confidence: 0.7,
-      reasoning: "Marketplace/aggregation pattern detected"
-    };
-  }
-
-  // FIXED: NEVER return "unknown" - if ANY hints exist, make best guess
-  // Even with just "payments" signal, classify as payment gateway (most common for B2B)
-  if (hasPayments) {
-    return {
-      category: "payment_gateway",
-      confidence: 0.5,
-      reasoning: "Payment processing signal detected - classified as payment gateway"
-    };
-  }
-
-  // Ultimate fallback: if we have ANY content at all, assume payment MoR
-  // This prevents "UNKNOWN" output when we have semantic understanding
   return {
-    category: "payment_MoR",
-    confidence: 0.4,
-    reasoning: "Insufficient signals - inferred as payment MoR from context patterns"
+    category: top.category,
+    confidence: Math.min(1, top.score / 4),
+    reasoning: `${top.label} detected (score: ${top.score.toFixed(1)})`,
   };
 }
 
-// Extract problem statement for classification
+// Check overlap with Blostem
+export function overlapsWithBlostem(text: string): boolean {
+  const keywords = [
+    "fd", "fixed deposit", "rd", "recurring deposit",
+    "banking infra", "banking product", "multi-bank",
+    "compliance", "fd booking", "investment platform",
+    "wealth management", "savings product", "bank account",
+  ];
+  const lower = text.toLowerCase();
+  return keywords.some(kw => lower.includes(kw));
+}
+
+// Extract problem statement
 export function extractProblemStatement(content: string): string {
-  // Look for explicit problem statements
   const patterns = [
     /(?:we|company|platform)\s+(?:help|solve|address|provide|offer)\s+([^.]+)/i,
     /enables?\s+([^.]+?)(?:\.|,|$)/i,
@@ -428,65 +268,20 @@ export function extractProblemStatement(content: string): string {
       return match[1].trim();
     }
   }
-
   return "";
 }
 
-// Check if problem overlaps with Blostem's domain
-export function overlapsWithBlostem(problemStatement: string): boolean {
-  const blostemKeywords = [
-    "fd", "fixed deposit", "rd", "recurring deposit",
-    "banking infra", "banking product", "multi-bank",
-    "compliance", "fd booking", "investment platform",
-    "wealth management", "savings product", "bank account",
-  ];
+// Get entity category hint (for search.ts compatibility)
+export function getEntityCategoryHint(query: string): string | null {
+  const { normalized } = normalizeQuery(query);
 
-  const lower = problemStatement.toLowerCase();
-  return blostemKeywords.some(kw => lower.includes(kw));
-}
+  if (/\b(groww|zerodha|upstox|broker|trading|stock)\b/i.test(normalized)) return "broker";
+  if (/\b(shriram|bajaj|nbfc|loan|lending)\b/i.test(normalized)) return "nbfc";
+  if (/\b(paytm|wallet|mobikwik)\b/i.test(normalized)) return "wallet";
+  if (/\b(setu|decentro|yap|open\.?tech|banking.?api)\b/i.test(normalized)) return "banking_api_infra";
+  if (/\b(dodo|paddle|merchant.?of.?record|mor)\b/i.test(normalized)) return "merchant_of_record";
+  if (/\b(phonepe|google\s*pay|gpay)\b/i.test(normalized)) return "upi_app";
+  if (/\b(paisabazaar|bankbazaar|policybazaar|marketplace)\b/i.test(normalized)) return "marketplace";
 
-// Never return UNKNOWN if ANY semantic understanding exists
-// FIXED: Always provide useful output, never "unknown" fallback
-export function getMinimalIntelligence(hints: ReturnType<typeof extractBusinessModelHints>, entityName: string): {
-  company_overview: string;
-  category: string;
-  overlap: string;
-  key_insight: string;
-} {
-  const { category, reasoning } = inferCategoryFromHints(hints);
-
-  // Generate useful output based on detected pattern
-  const categoryDescriptions: Record<string, string> = {
-    "payment_MoR": "Merchant-of-Record payment platform handling global tax and compliance",
-    "payment_gateway": "Payment gateway/processor for businesses",
-    "api_infra": "API infrastructure provider for BFSI",
-    "issuer": "Financial product issuer (FD/RD/NBFC)",
-    "aggregator": "Marketplace/aggregation platform",
-    "unknown": "Fintech company — requires direct research",
-  };
-
-  const overlapMap: Record<string, string> = {
-    "payment_MoR": "Partial — payment layer, not BFSI product infra",
-    "payment_gateway": "Partial — payment processing, not banking product APIs",
-    "api_infra": "Potential — if providing BFSI API rails",
-    "issuer": "Partner — supply-side product issuer",
-    "aggregator": "Minimal — distribution layer, different problem",
-    "unknown": "Direct research required for accurate overlap assessment",
-  };
-
-  const insightMap: Record<string, string> = {
-    "payment_MoR": "Handles global tax + compliance for SaaS, but doesn't provide banking product APIs",
-    "payment_gateway": "Processes payments at scale, MDR + settlement complexity compounds at volume",
-    "api_infra": "Provides infrastructure/API layer — Blostem competes at BFSI product distribution",
-    "issuer": "Issues FD/RD products — Blostem can integrate as distribution partner",
-    "aggregator": "Aggregates financial products — Blostem can partner for product distribution",
-    "unknown": "Direct research recommended for accurate positioning strategy",
-  };
-
-  return {
-    company_overview: categoryDescriptions[category] || `Fintech company operating in ${category.replace("_", " ")}`,
-    category: category.replace("_", " ").toUpperCase(),
-    overlap: overlapMap[category] || "Requires direct research for accurate assessment",
-    key_insight: insightMap[category] || insightMap["unknown"],
-  };
+  return null;
 }

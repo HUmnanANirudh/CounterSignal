@@ -2,13 +2,12 @@ import { tavily } from "@tavily/core";
 import type { Citation } from "@/types/battlecard";
 import {
   resolveEntity,
-  filterContentForEntity,
+  scoreContentMatch,
   overlapsWithBlostem,
   extractProblemStatement,
   extractBusinessModelHints,
-  inferCategoryFromHints,
-  getClassificationOverride,
-  getMinimalIntelligence,
+  classifyFromHints,
+  getEntityCategoryHint,
 } from "./entity-resolution";
 
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
@@ -486,12 +485,12 @@ export async function search(competitor: string): Promise<SearchResult> {
   const entityResolution = resolveEntity(competitor);
   const entity = entityResolution.resolved!;
   console.log(`[Search] Entity resolved: ${entity.canonicalName} (confidence: ${entity.confidence})`);
-  console.log(`[Search] Entity category_hint: ${entity.category_hint}`);
+  console.log(`[Search] Entity categoryHint: ${entity.categoryHint}`);
 
-  // INJECT CATEGORY HINT INTO CONTENT: Pass entity's category_hint to classification
+  // INJECT CATEGORY HINT INTO CONTENT: Pass entity's categoryHint to classification
   // This ensures known entities like Paytm, Razorpay get correct classification even with noisy content
-  const categoryHintText = entity.category_hint !== "unknown"
-    ? `\n\n[CATEGORY HINT]: The entity "${entity.canonicalName}" is classified as: ${entity.category_hint}\n`
+  const categoryHintText = entity.categoryHint
+    ? `\n\n[CATEGORY HINT]: The entity "${entity.canonicalName}" is classified as: ${entity.categoryHint}\n`
     : "";
 
   // ENTITY RELEVANCE FILTER: Keep docs that mention the target entity with substance
@@ -520,12 +519,11 @@ export async function search(competitor: string): Promise<SearchResult> {
       continue;
     }
 
-    // Use entity-aware content filter for additional verification
-    // Pass competitor (query) to ensure strict query-based matching
-    const entityFilterResult = filterContentForEntity(r.content, entity, r.url, competitor);
+    // Use scoring-based soft filter instead of hard rejection
+    const scoreResult = scoreContentMatch(r.content, entity, competitor);
 
-    if (!entityFilterResult.accepted) {
-      rejectedResults.push({ url: r.url, title: r.title, reason: entityFilterResult.reason });
+    if (!scoreResult.accepted) {
+      rejectedResults.push({ url: r.url, title: r.title, reason: scoreResult.reason });
       continue;
     }
 
@@ -573,11 +571,10 @@ export async function search(competitor: string): Promise<SearchResult> {
     // Extract business model hints from available content
     const sampleContent = relevantResults.map(r => r.content).join("\n");
     const hints = extractBusinessModelHints(sampleContent);
-    const categoryResult = inferCategoryFromHints(hints);
+    const categoryResult = classifyFromHints(hints);
 
     if (categoryResult.confidence > 0.5) {
       inferredCategory = categoryResult;
-      minimalIntelligence = getMinimalIntelligence(hints, competitor);
       console.log(`[Search] Inferred category: ${categoryResult.category} (${categoryResult.confidence})`);
     }
   }
@@ -610,11 +607,10 @@ export async function search(competitor: string): Promise<SearchResult> {
       if (secondary.results.length > 0 && !inferredCategory) {
         const allContent = [...relevantResults, ...secondary.results].map(r => r.content).join("\n");
         const hints = extractBusinessModelHints(allContent);
-        const categoryResult = inferCategoryFromHints(hints);
+        const categoryResult = classifyFromHints(hints);
 
         if (categoryResult.confidence > 0.4) {
           inferredCategory = categoryResult;
-          minimalIntelligence = getMinimalIntelligence(hints, competitor);
         }
       }
     } catch (e) {
@@ -666,7 +662,7 @@ export async function search(competitor: string): Promise<SearchResult> {
   return {
     citations,
     rawContent,
-    entityCategoryHint: entity.category_hint !== "unknown" ? entity.category_hint : "",
+    entityCategoryHint: entity.categoryHint || "",
     debugInfo: {
       domainCount: Object.keys(normalizedDomainCount).length,
       totalResults: allResults.length,

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runPipeline } from "@/lib/pipeline";
-import type { PipelineStage } from "@/types";
+import { runPipeline, PipelineStage } from "@/lib/pipeline";
 
 export const runtime = "nodejs";
 
