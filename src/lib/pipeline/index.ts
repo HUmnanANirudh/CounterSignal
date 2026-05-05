@@ -1,5 +1,4 @@
 import type { Battlecard } from "@/types/battlecard";
-import type { PipelineCallbacks, PipelineStage } from "@/types/pipeline";
 import { search } from "./search";
 import { preprocess, hasImplicitComplaints } from "./preprocess";
 import { extract } from "./extract";
@@ -9,7 +8,7 @@ import { sanitizeForAE } from "./sanitize";
 import { classifyCompetitor } from "./classify";
 import { resolveEntity } from "./entity-resolution";
 import { deriveDealPrimitives } from "./deal-primitives";
-import { PIPELINE_CONFIG } from "@/types/pipeline";
+import { PIPELINE_CONFIG, PipelineCallbacks, PipelineStage } from "@/types";
 import {
   buildSupplySideBattlecard,
   buildNonCompetitorBattlecard,
@@ -18,8 +17,6 @@ import {
   renderInternalProfileMarkdown,
   isInternalCompany,
 } from "./context-builders";
-
-export type { PipelineCallbacks, PipelineStage };
 
 const cache = new Map<string, { battlecard: Battlecard; timestamp: number }>();
 
@@ -149,28 +146,28 @@ export async function runPipeline(
     callbacks.onStageChange("extracting", "Extracting structured intelligence...");
     const extracted = await extract(preprocessed, competitor);
 
-    // KILL SWITCH: Pricing + Complaint gate - if both missing, stop
-    if (preprocessed.pricing_candidates.length === 0 && preprocessed.complaint_sentences.length === 0) {
-      console.warn(`[Pipeline] KILL SWITCH: No pricing OR complaints — insufficient intelligence`);
-      const insufficientCard = buildInsufficientDataBattlecard(competitor, debugInfo?.relevantResults ?? 0, debugInfo?.totalResults ?? 0);
-      callbacks.onChunk(renderMarkdown(insufficientCard));
-      callbacks.onComplete(insufficientCard);
-      return;
-    }
-
     callbacks.onStageChange("deriving", "Deriving signals and citation mapping...");
     const { signals, sourceMap } = deriveSignals(preprocessed, citations);
 
-    // KILL SWITCH: Signal gate - if < 2 validated signals, STOP
+    const confidence = calculateConfidence(citations.length, signals, citations);
+
+    // DEGRADATION: Adjust confidence based on missing critical fields instead of killing
+    if (dataGaps.includes("pricing_not_found")) {
+      confidence.score -= 0.1;
+      confidence.factors.push("⚠ Missing pricing data (-0.1)");
+    }
+    if (dataGaps.includes("complaints_not_found")) {
+      confidence.score -= 0.1;
+      confidence.factors.push("⚠ Missing complaint/negative data (-0.1)");
+    }
     if (signals.length < 2) {
-      console.warn(`[Pipeline] KILL SWITCH: Only ${signals.length} validated signals (< 2 required) — stopping`);
-      const insufficientCard = buildInsufficientDataBattlecard(competitor, debugInfo?.relevantResults ?? 0, debugInfo?.totalResults ?? 0);
-      callbacks.onChunk(renderMarkdown(insufficientCard));
-      callbacks.onComplete(insufficientCard);
-      return;
+      dataGaps.push("insufficient_signals");
+      confidence.score -= 0.1;
+      confidence.factors.push(`⚠ Only ${signals.length} validated signals (-0.1)`);
     }
 
-    const confidence = calculateConfidence(citations.length, signals, citations);
+    // Ensure score doesn't drop below 0.1
+    confidence.score = Math.max(0.1, Math.round(confidence.score * 100) / 100);
 
     if (confidence.score < 0.3) {
       dataGaps.push("low_confidence_signal");

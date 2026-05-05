@@ -132,9 +132,9 @@ export async function extract(
 
   // NO FALLBACK: If extraction is weak, we STOP - not fill with additional content
   // Fallback content injects noise and produces hallucinated battlecards
-  const hasWeakData = preprocessed.pricing_candidates.length === 0 && preprocessed.complaint_sentences.length === 0;
+  const hasWeakData = preprocessed.pricing_candidates.length === 0 && preprocessed.complaint_sentences.length === 0 && (!preprocessed.negative_signals || preprocessed.negative_signals.length === 0);
   if (hasWeakData) {
-    console.log(`[Extract] Weak data detected (no pricing, no complaints) — extraction will likely produce minimal results`);
+    console.log(`[Extract] Weak data detected (no pricing, no complaints, no negative signals) — extraction will likely produce minimal results`);
   }
 
   const model = google("gemini-2.5-flash-lite");

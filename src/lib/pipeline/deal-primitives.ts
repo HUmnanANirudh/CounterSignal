@@ -234,7 +234,7 @@ export function deriveDealPrimitives(
     }
     pricing_positioning += " — Blostem offers transparent infra-layer pricing.";
   } else {
-    pricing_positioning = `No specific pricing data found for ${competitor}.`;
+    pricing_positioning = `Pricing is not publicly disclosed (typical for infrastructure / MoR providers).`;
   }
 
   const landmines: string[] = [];
