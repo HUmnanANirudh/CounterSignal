@@ -84,6 +84,7 @@ export type PipelineStage =
   | "preprocessing"
   | "extracting"
   | "deriving"
+  | "normalizing"
   | "primitives"
   | "vars"
   | "rendering";

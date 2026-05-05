@@ -92,7 +92,9 @@ export interface Confidence {
 export interface Signal {
   id: string;
   type: string;
-  value: string;
+  value: string; // The raw extracted chunk
+  summary?: string; // Cleaned, max 15 words
+  evidence?: string; // Cleaned sentence containing the signal
   citationIds: string[];
   normalizedType?: string;
 }

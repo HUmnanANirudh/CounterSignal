@@ -7,6 +7,7 @@ import { renderMarkdown } from "./render";
 import { sanitizeForAE } from "./sanitize";
 import { classifyCompetitor } from "./classify";
 import { resolveEntity } from "./entity-resolution";
+import { normalizeSignals } from "./normalize";
 import { deriveDealPrimitives } from "./deal-primitives";
 import { PIPELINE_CONFIG, PipelineCallbacks, PipelineStage } from "@/types";
 import {
@@ -17,6 +18,8 @@ import {
   renderInternalProfileMarkdown,
   isInternalCompany,
 } from "./context-builders";
+
+export type { PipelineStage } from "@/types";
 
 const cache = new Map<string, { battlecard: Battlecard; timestamp: number }>();
 
@@ -147,7 +150,10 @@ export async function runPipeline(
     const extracted = await extract(preprocessed, competitor);
 
     callbacks.onStageChange("deriving", "Deriving signals and citation mapping...");
-    const { signals, sourceMap } = deriveSignals(preprocessed, citations);
+    const { signals: rawSignals, sourceMap } = deriveSignals(preprocessed, citations);
+
+    callbacks.onStageChange("normalizing", "Normalizing and summarizing signals...");
+    const signals = await normalizeSignals(rawSignals);
 
     const confidence = calculateConfidence(citations.length, signals, citations);
 
@@ -181,7 +187,7 @@ export async function runPipeline(
     console.log(`[Pipeline] Confidence: ${confidence.score} — VARS: ${suppressVARS ? "suppressed" : "shown"}, Objections: ${suppressObjections ? "suppressed" : "shown"}, Landmines: ${suppressLandmines ? "suppressed" : "shown"}`);
 
     callbacks.onStageChange("primitives", "Generating deal primitives for AE use...");
-    const raw_ae_battlecard = deriveDealPrimitives(extracted, signals, citations, competitor);
+    const raw_ae_battlecard = deriveDealPrimitives(extracted, signals, citations, competitor, classification.category);
 
     // Apply confidence gating to deal primitives
     if (suppressObjections) {
@@ -198,13 +204,32 @@ export async function runPipeline(
 
     callbacks.onStageChange("vars", "Generating VARS positioning...");
 
-    // Deterministic VARS from extracted data (no second LLM call)
+    const acknowledgePoints = [
+      ...(extracted.customer_truths?.positives || []),
+      ...(extracted.positioning?.differentiators || [])
+    ].slice(0, 3);
+
+    // Deterministic VARS from extracted data (Synthesis instead of static text)
     const vars_layer = {
-      validate: extracted.positioning?.differentiators?.[0] || `Teams consider ${competitor} for fintech needs`,
-      acknowledge: extracted.positioning?.tagline || `${competitor} provides BFSI solutions`,
-      reframe: `Without transparent pricing or compliance data, risk at scale is elevated`,
-      specify: `Blostem offers structured BFSI infrastructure with predictable behavior`,
+      validate: extracted.positioning?.tagline || `Prospects consider ${competitor} when evaluating fintech solutions`,
+      acknowledge: acknowledgePoints.length > 0 
+        ? acknowledgePoints.map(p => `- ${p}`).join("\n")
+        : `- Strong market presence\n- Established feature set`,
+      reframe: `While ${competitor} solves specific problems, it is not a unified BFSI infrastructure layer. Building on disparate systems creates compliance and scaling risks.`,
+      specify: `Blostem provides a native, compliant infrastructure layer where FD/RD capabilities are built-in, not bolted on.`,
     };
+
+    // Pre-rendering sanity checks
+    if (!extracted.positioning?.tagline || extracted.positioning.tagline.length < 10) {
+      confidence.score = Math.max(0.1, confidence.score - 0.1);
+      if (!confidence.factors.includes("⚠ Low quality positioning data (-0.1)")) {
+        confidence.factors.push("⚠ Low quality positioning data (-0.1)");
+      }
+    }
+    
+    if (ae_battlecard.landmines) {
+      ae_battlecard.landmines = ae_battlecard.landmines.filter(lm => !lm.includes("undefined") && !lm.includes("[object Object]") && lm.length > 20);
+    }
 
     callbacks.onStageChange("rendering", "Rendering battlecard...");
     const recent_moves = extracted.recent_moves?.length ? filterRecentMoves(extracted.recent_moves) : [];

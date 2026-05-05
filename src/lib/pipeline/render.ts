@@ -204,19 +204,22 @@ export function renderMarkdown(battlecard: Battlecard): string {
   }
 
   // Customer Truths (compact)
-  if (battlecard.customer_truths) {
-    addSection("Customer Truths");
-    if (battlecard.customer_truths.keyComplaints?.length) {
-      add(`**Key Issues:**`);
-      for (const c of battlecard.customer_truths.keyComplaints.slice(0, 2)) {
-        addBullet(c, 100);
-      }
+  addSection("Customer Truths");
+  const truths = battlecard.customer_truths ?? { positives: [], negatives: [], keyComplaints: [] };
+  
+  if ((truths.keyComplaints ?? []).length > 0) {
+    add(`**Key Issues:**`);
+    for (const c of truths.keyComplaints!.slice(0, 2)) {
+      addBullet(c, 100);
     }
-    if (battlecard.customer_truths.positives?.length) {
-      add(`**Strengths:**`);
-      for (const p of battlecard.customer_truths.positives.slice(0, 2)) {
-        addBullet(p, 100);
-      }
+  } else {
+    add(`No strong public complaints detected.`);
+  }
+
+  if ((truths.positives ?? []).length > 0) {
+    add(`**Strengths:**`);
+    for (const p of truths.positives!.slice(0, 2)) {
+      addBullet(p, 100);
     }
   }
 

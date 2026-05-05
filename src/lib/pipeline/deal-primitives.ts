@@ -6,139 +6,80 @@ function isActualCustomerComplaint(signal: Signal): boolean {
   return complaintTypes.includes(signal.normalizedType || "");
 }
 function deriveObjectionFromSignal(signal: Signal): string {
-  const lower = signal.value.toLowerCase();
-
-  if (/rbi.*penalty|penalty.*rbi|fine.*impose|regulatory.*action/i.test(lower)) return "They seem compliant";
-  if (/fraud|scam|security.*breach|data.*leak/i.test(lower)) return "They seem trustworthy";
-  if (/revenue.*drop|loss|declin|net.*loss|widen.*loss/i.test(lower)) return "They seem financially stable";
-  if (/outage|service.*disrupt|downtime/i.test(lower)) return "They seem reliable";
-  if (/pricing|fee|cost|expensive|overpriced|mdr/i.test(lower)) return "They seem cheaper";
-  if (/support|service.*delay|unresponsive/i.test(lower)) return "They have better support";
-  if (/integration|api|technical.*debt/i.test(lower)) return "They're easier to integrate";
-  if (/onboard|slow.*start|weeks.*to.*launch/i.test(lower)) return "They're faster to onboard";
-
-  const signalType = classifySignalType(signal.value, signal.normalizedType);
+  const signalType = signal.type && signal.type !== "general" ? signal.type : classifySignalType(signal.value, signal.normalizedType);
   switch (signalType) {
-    case "trust_risk": return "They seem trustworthy";
-    case "financial_health": return "They seem financially stable";
-    case "regulatory": return "They seem compliant";
-    case "reliability": return "They seem reliable";
-    case "strategy_drift": return "They seem focused";
-    case "pricing_complaint": return "They seem cheaper";
-    case "support_issue": return "They have better support";
-    case "integration_issue": return "They're easier to integrate";
-    case "onboarding_delay": return "They're faster to onboard";
-    default: return "They seem like a good option";
+    case "regulatory": return "How do they handle compliance risk?";
+    case "trust_risk": return "How do they isolate fraud liability?";
+    case "financial_health": return "Are they financially stable enough for a long-term partnership?";
+    case "pricing_complaint": return "What happens to costs at scale?";
+    case "reliability": return "How reliable is their API infrastructure?";
+    case "support_issue": return "How responsive is their technical support?";
+    case "integration_issue": return "How complex is integration across banks?";
+    case "onboarding_delay": return "How long does it take to go live?";
+    default: return "How do they compare on infrastructure capabilities?";
   }
 }
 
 function deriveCounterFromSignal(signal: Signal, competitor: string, citationIds: string[]): string {
   const citationRef = citationIds[0] ? ` [${citationIds[0]}]` : "";
-  const signalValue = signal.value;
+  const signalType = signal.type && signal.type !== "general" ? signal.type : classifySignalType(signal.value, signal.normalizedType);
+  const summary = signal.summary || signal.value.slice(0, 60);
 
-  if (!citationIds[0] && signalValue.length < 30) {
-    return `Without validated customer evidence, cannot confirm specific risks — recommend direct research${citationRef}.`;
+  switch (signalType) {
+    case "regulatory": return `${competitor}'s regulatory history creates compliance risk your team inherits${citationRef}`;
+    case "financial_health": return `${competitor}'s financial performance signals uneven product traction${citationRef}`;
+    case "trust_risk": return `${competitor}'s fraud incidents expose partners to liability${citationRef}`;
+    case "reliability": return `${competitor}'s service disruptions create settlement risk${citationRef}`;
+    case "pricing_complaint": return `${competitor}'s pricing opacity creates hidden costs at scale${citationRef}`;
+    case "support_issue": return `${competitor}'s support issues escalate for BFSI compliance needs${citationRef}`;
+    case "integration_issue": return `${competitor}'s integration complexity compounds with each bank partnership${citationRef}`;
+    case "onboarding_delay": return `${competitor}'s BFSI onboarding timelines add weeks to your launch${citationRef}`;
+    default: return `${summary}... recommend validation${citationRef}`;
   }
-
-  const lower = signalValue.toLowerCase();
-
-  if (/rbi|regulatory|penalty|fine|compliance.*issue|ban|suspend/i.test(lower)) {
-    if (/₹\s*\d+\s*(?:cr|crore)/i.test(signalValue)) {
-      const amount = signalValue.match(/₹\s*\d+\s*(?:cr|crore)/i)?.[0];
-      return `${competitor} faced RBI action (${amount}) — how does regulatory exposure affect your risk tolerance?${citationRef}`;
-    }
-    if (/crawl/i.test(lower)) {
-      return `${competitor} is rebuilding payments trust after regulatory action — long-term stability uncertain${citationRef}`;
-    }
-    return `${competitor}'s regulatory history creates compliance risk your team inherits${citationRef}`;
-  }
-
-  if (/loss|revenue.*declin|widen.*loss|net.*loss/i.test(lower)) {
-    if (/loss.*₹|₹.*loss/i.test(signalValue)) {
-      const lossMatch = signalValue.match(/loss.*₹[\d,]+|₹[\d,]+.*loss/i);
-      if (lossMatch) {
-        return `${lossMatch[0]} — does ${competitor}'s financial traction concern you?${citationRef}`;
-      }
-    }
-    return `${competitor}'s financial performance signals uneven product traction${citationRef}`;
-  }
-
-  if (/fraud|scam|security.*breach|data.*leak/i.test(lower)) return `${competitor}'s fraud incidents expose partners to liability${citationRef}`;
-  if (/outage|service.*disrupt|downtime/i.test(lower)) return `${competitor}'s service disruptions create settlement risk${citationRef}`;
-  if (/pricing|fee|cost|expensive|overpriced|mdr/i.test(lower)) return `${competitor}'s pricing opacity creates hidden costs at scale${citationRef}`;
-  if (/support|service.*delay|unresponsive/i.test(lower)) return `${competitor}'s support issues escalate for BFSI compliance needs${citationRef}`;
-  if (/integration|api|difficult/i.test(lower)) return `${competitor}'s integration complexity compounds with each bank partnership${citationRef}`;
-  if (/onboard|slow.*start|weeks/i.test(lower)) return `${competitor}'s BFSI onboarding timelines add weeks to your launch${citationRef}`;
-
-  if (signalValue.length > 20) {
-    const snippet = signalValue.slice(0, 100);
-    return `${snippet}...${citationRef}`;
-  }
-
-  return `Signal requires validation — recommend direct research${citationRef}`;
 }
 
 function deriveLandmineFromSignal(signal: Signal): string | null {
-  const signalValue = signal.value;
-  const lower = signalValue.toLowerCase();
-
-  if (/rbi|regulatory|penalty/i.test(lower)) {
-    if (/₹\s*\d+\s*(?:cr|crore)/i.test(signalValue)) {
-      return `What happens to your operations if ${signalValue.match(/₹\s*\d+\s*(?:cr|crore)/i)?.[0]} RBI action happens again?`;
-    }
-    return `What's your contingency if RBI regulatory action impacts ${signalValue.match(/\w+/)?.[0]} operations?`;
+  const signalType = signal.type && signal.type !== "general" ? signal.type : classifySignalType(signal.value, signal.normalizedType);
+  switch (signalType) {
+    case "regulatory": return "How do you handle regulatory exposure at scale?";
+    case "trust_risk": return "Who owns fraud liability in your current stack?";
+    case "financial_health": return "How does your cost scale with transaction volume?";
+    case "pricing_complaint": return "What happens to your effective cost when MDR scales with volume?";
+    case "reliability": return "What SLA-backed recourse do you have during service disruptions?";
+    case "support_issue": return "How do you manage support escalations for critical payment flows?";
+    case "integration_issue": return "How do you manage multi-bank integration complexity today?";
+    case "onboarding_delay": return "How long can your product launch be delayed by onboarding timelines?";
+    default: return "How do you manage multi-bank complexity today?";
   }
-  if (/fraud|scam|security/i.test(lower)) return `How do you handle settlement risk when fraud incidents hit ${signalValue.match(/\w+/)?.[0]} payment flows?`;
-  if (/loss|revenue.*declin|financial/i.test(lower)) return `What happens to your margins if ${signalValue.match(/\w+/)?.[0]}'s financial decline continues?`;
-  if (/pricing|fee|mdr|overpriced/i.test(lower)) return `How does your effective cost change when ${signalValue.match(/\w+/)?.[0]} MDR scales with volume?`;
-  if (/outage|service.*disrupt|downtime/i.test(lower)) return `What SLA-backed recourse do you have when ${signalValue.match(/\w+/)?.[0]} has service disruptions?`;
-
-  if (signalValue.length > 15) return `What specific risks does ${signalValue.slice(0, 60)} create for your platform?`;
-  return null;
 }
 
 function deriveWinFromSignal(signal: Signal, competitor: string): string | null {
-  const signalValue = signal.value;
-  const lower = signalValue.toLowerCase();
+  const signalType = signal.type && signal.type !== "general" ? signal.type : classifySignalType(signal.value, signal.normalizedType);
+  const summary = signal.summary || signal.value.slice(0, 80);
 
-  if (/pricing|fee|mdr|overpriced|expensive/i.test(lower)) return `${competitor}: ${signalValue.slice(0, 80)}. Blostem offers transparent infra pricing.`;
-  if (/support|service.*delay|unresponsive/i.test(lower)) return `${competitor}: ${signalValue.slice(0, 80)}. Blostem provides BFSI-native support.`;
-  if (/integration|api|difficult/i.test(lower)) return `${competitor}: ${signalValue.slice(0, 80)}. Blostem's single API handles multi-bank complexity.`;
-  if (/onboard|slow.*start/i.test(lower)) return `${competitor}: ${signalValue.slice(0, 80)}. Blostem standardizes BFSI onboarding.`;
-  if (/outage|service.*disrupt|reliability/i.test(lower)) return `${competitor}: ${signalValue.slice(0, 80)}. Blostem provides SLA-backed reliability.`;
-  if (/rbi|regulatory|compliance/i.test(lower)) return `${competitor}: ${signalValue.slice(0, 80)}. Blostem handles compliance natively.`;
-  if (/fraud|scam|security/i.test(lower)) return `${competitor}: ${signalValue.slice(0, 80)}. Blostem isolates you from fraud liability.`;
-
-  return null;
-}
-
-function detectCompetitorType(competitor: string, signals: Signal[], intelligence: ExtractedIntelligence): CompetitorType {
-  const tagline = (intelligence.positioning?.tagline || "").toLowerCase();
-
-  if (/wallet|mobile.*wallet|digital.*wallet|prepaid.*wallet/i.test(tagline)) return "wallet";
-  if (/gateway|merchant.*payment|payment.*processor|checkout.*solution/i.test(tagline)) return "gateway";
-  if (/nbfc|non.*banking.*financial/i.test(tagline)) return "NBFC";
-  if (/infrastructure|infra|banking.*as.*a.*service|baas/i.test(tagline)) return "infra";
-
-  const allText = signals.map(s => s.value).join(" ").toLowerCase();
-  if (/wallet|digital.*wallet|mobile.*wallet|wallet.*balance|upi.*payment|qr.*code.*payment/i.test(allText)) return "wallet";
-  if (/payment.*gateway|merchant.*checkout|payment.*processor/i.test(allText)) return "gateway";
-  if (/nbfc|lending|loan.*product|credit.*product/i.test(allText)) return "NBFC";
-  if (/infrastructure|infra.*layer|banking.*as.*service/i.test(allText)) return "infra";
-
-  return "unknown";
+  switch (signalType) {
+    case "pricing_complaint": return `${competitor}: ${summary}. Blostem offers transparent infra pricing.`;
+    case "support_issue": return `${competitor}: ${summary}. Blostem provides BFSI-native support.`;
+    case "integration_issue": return `${competitor}: ${summary}. Blostem's single API handles multi-bank complexity.`;
+    case "onboarding_delay": return `${competitor}: ${summary}. Blostem standardizes BFSI onboarding.`;
+    case "reliability": return `${competitor}: ${summary}. Blostem provides SLA-backed reliability.`;
+    case "regulatory": return `${competitor}: ${summary}. Blostem handles compliance natively.`;
+    case "trust_risk": return `${competitor}: ${summary}. Blostem isolates you from fraud liability.`;
+    default: return null;
+  }
 }
 
 export function deriveDealPrimitives(
   intelligence: ExtractedIntelligence,
   signals: Signal[],
   citations: Citation[],
-  competitor: string
+  competitor: string,
+  inferredCategory: string
 ): AE_BATTLECARD {
   console.log(`[DealPrimitives] Processing ${signals.length} signals for ${competitor}`);
 
-  const compType = detectCompetitorType(competitor, signals, intelligence);
-  console.log(`[DealPrimitives] Detected competitor type: ${compType}`);
+  const compType = inferredCategory;
+  console.log(`[DealPrimitives] Using pipeline category: ${compType}`);
 
   if (signals.length === 0) {
     console.log(`[DealPrimitives] No signals — returning minimal honest primitives`);
