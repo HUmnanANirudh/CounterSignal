@@ -9,7 +9,7 @@ import { classifyCompetitor } from "./classify";
 import { resolveEntity } from "./entity-resolution";
 import { normalizeSignals } from "./normalize";
 import { deriveDealPrimitives } from "./deal-primitives";
-import { PIPELINE_CONFIG, PipelineCallbacks, PipelineStage } from "@/types";
+import { PIPELINE_CONFIG, PipelineCallbacks } from "@/types";
 import {
   buildSupplySideBattlecard,
   buildNonCompetitorBattlecard,
