@@ -1,11 +1,12 @@
 import type { Battlecard } from "@/types/battlecard";
+import type { PipelineCallbacks, PipelineStage } from "@/types/pipeline";
 import { search } from "./search";
 import { preprocess, hasImplicitComplaints } from "./preprocess";
 import { extract } from "./extract";
 import { deriveSignals, calculateConfidence } from "./signals";
 import { renderMarkdown } from "./render";
 import { sanitizeForAE } from "./sanitize";
-import { classifyCompetitor} from "./classify";
+import { classifyCompetitor } from "./classify";
 import { resolveEntity } from "./entity-resolution";
 import { deriveDealPrimitives } from "./deal-primitives";
 import { PIPELINE_CONFIG } from "@/types/pipeline";
@@ -18,22 +19,7 @@ import {
   isInternalCompany,
 } from "./context-builders";
 
-export interface PipelineCallbacks {
-  onStageChange: (stage: PipelineStage, message: string) => void;
-  onChunk: (markdown: string) => void;
-  onComplete: (battlecard: Battlecard) => void;
-  onError: (error: Error) => void;
-}
-
-export type PipelineStage =
-  | "searching"
-  | "classifying"
-  | "preprocessing"
-  | "extracting"
-  | "deriving"
-  | "primitives"
-  | "vars"
-  | "rendering";
+export type { PipelineCallbacks, PipelineStage };
 
 const cache = new Map<string, { battlecard: Battlecard; timestamp: number }>();
 
@@ -84,7 +70,7 @@ export async function runPipeline(
   try {
     callbacks.onStageChange("searching", `Researching ${competitor}...`);
     const searchResult = await search(competitor);
-    let { citations, rawContent, debugInfo } = searchResult;
+    const { citations, rawContent, debugInfo } = searchResult;
     console.log(`[Pipeline] Entity category hint: ${searchResult.entityCategoryHint || "none"}`);
 
     // MINIMUM DATA GATE: Check sufficiency before proceeding
@@ -160,7 +146,7 @@ export async function runPipeline(
     }
 
     callbacks.onStageChange("extracting", "Extracting structured intelligence...");
-    const extracted = await extract(preprocessed, competitor, citations);
+    const extracted = await extract(preprocessed, competitor);
 
     // KILL SWITCH: Pricing + Complaint gate - if both missing, stop
     if (preprocessed.pricing_candidates.length === 0 && preprocessed.complaint_sentences.length === 0) {
@@ -197,7 +183,7 @@ export async function runPipeline(
     console.log(`[Pipeline] Confidence: ${confidence.score} — VARS: ${suppressVARS ? "suppressed" : "shown"}, Objections: ${suppressObjections ? "suppressed" : "shown"}, Landmines: ${suppressLandmines ? "suppressed" : "shown"}`);
 
     callbacks.onStageChange("primitives", "Generating deal primitives for AE use...");
-    let raw_ae_battlecard = deriveDealPrimitives(extracted, signals, citations, competitor);
+    const raw_ae_battlecard = deriveDealPrimitives(extracted, signals, citations, competitor);
 
     // Apply confidence gating to deal primitives
     if (suppressObjections) {

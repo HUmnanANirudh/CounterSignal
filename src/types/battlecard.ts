@@ -42,7 +42,6 @@ export interface ObjectionHandling {
   evidence: string;
 }
 
-// AE-Aligned Battlecard Types
 export type CompetitorType = string;
 
 export interface AEObjectionHandling {
@@ -87,6 +86,14 @@ export interface Confidence {
   factors: string[];
 }
 
+export interface Signal {
+  id: string;
+  type: string;
+  value: string;
+  citationIds: string[];
+  normalizedType?: string;
+}
+
 export interface Battlecard {
   competitor: string;
   generatedAt: string;
@@ -110,33 +117,6 @@ export interface Battlecard {
   dataGaps: string[];
 }
 
-export interface Signal {
-  id: string;
-  type: string;
-  value: string;
-  citationIds: string[];
-  normalizedType?: string;
-}
-
 export interface BattlecardInput {
   competitorName: string;
-}
-
-export interface BattleCardViewProps {
-  competitor: string;
-  markdown: string;
-  isLoading: boolean;
-}
-
-export interface SearchFormProps {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: (value: string) => void;
-  isLoading: boolean;
-}
-
-
-export interface BattlecardResult {
-  markdown: string;
-  error?: string;
 }

@@ -1,28 +1,10 @@
-// Entity resolution - scoring-based, no hardcoded database
-// Resolution: normalize → score match → return entity or unknown
-
 import type { BFSICategory } from "@/types/entity";
+import type { ResolvedEntity, EntityResolutionResult } from "@/types/pipeline";
 import { getMarketRole } from "@/types/entity";
+export { getEntityCategoryHint } from "./utils/domain";
 
-export interface ResolvedEntity {
-  canonicalName: string;
-  aliases: string[];
-  domain: string | null;
-  categoryHint: BFSICategory;
-  confidence: number;
-  classification: {
-    primaryRole: "competitor" | "non_competitor" | "supply_side";
-    category: BFSICategory;
-  };
-}
+export type { ResolvedEntity, EntityResolutionResult };
 
-export interface EntityResolutionResult {
-  resolved: ResolvedEntity | null;
-  is_verified: boolean;
-  match_sources: string[];
-  rejection_reasons: string[];
-  entityConfidence: number; // Scoring-based confidence
-}
 
 // Noise words to remove
 const NOISE_WORDS = ["inc", "ltd", "llc", "pvt", "private", "fintech", "app", "payments", "payment", "india", "indian", "fintech", "tech", "solutions", "services", "group"];
@@ -269,19 +251,4 @@ export function extractProblemStatement(content: string): string {
     }
   }
   return "";
-}
-
-// Get entity category hint (for search.ts compatibility)
-export function getEntityCategoryHint(query: string): string | null {
-  const { normalized } = normalizeQuery(query);
-
-  if (/\b(groww|zerodha|upstox|broker|trading|stock)\b/i.test(normalized)) return "broker";
-  if (/\b(shriram|bajaj|nbfc|loan|lending)\b/i.test(normalized)) return "nbfc";
-  if (/\b(paytm|wallet|mobikwik)\b/i.test(normalized)) return "wallet";
-  if (/\b(setu|decentro|yap|open\.?tech|banking.?api)\b/i.test(normalized)) return "banking_api_infra";
-  if (/\b(dodo|paddle|merchant.?of.?record|mor)\b/i.test(normalized)) return "merchant_of_record";
-  if (/\b(phonepe|google\s*pay|gpay)\b/i.test(normalized)) return "upi_app";
-  if (/\b(paisabazaar|bankbazaar|policybazaar|marketplace)\b/i.test(normalized)) return "marketplace";
-
-  return null;
 }

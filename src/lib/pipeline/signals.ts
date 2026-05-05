@@ -1,145 +1,14 @@
 import type { Citation, PreprocessedData, Signal } from "@/types";
-
-// Types for implicit complaints (negative signals)
-type NegativeSignalType = "trust_risk" | "financial_health" | "regulatory" | "reliability" | "strategy_drift" | "general";
-
-// Severity levels for signals - HIGH severity bypasses cross-type validation
-type SignalSeverity = "HIGH" | "MEDIUM" | "LOW";
-
-interface SignalAppearance {
-  normalizedType: string;
-  text: string;
-  citationIds: string[];
-  domains: Set<string>;
-  domainTypes: Set<string>;
-  severity: SignalSeverity;
-}
-
-// Classify signal severity based on type and source
-function classifySeverity(normalizedType: string){
-  // HIGH severity: fraud, financial loss, regulatory issues from authoritative sources
-  const highSeverityTypes = ["trust_risk", "financial_health", "regulatory"];
-  if (highSeverityTypes.includes(normalizedType)) {
-    return "HIGH";
-  }
-  // MEDIUM severity: reliability issues
-  if (normalizedType === "reliability" || normalizedType === "strategy_drift") {
-    return "MEDIUM";
-  }
-  return "LOW";
-}
-
-// Classify any text into a negative signal type using regex patterns
-function classifyNegativeSignal(text: string): NegativeSignalType {
-  const lower = text.toLowerCase();
-
-  // Trust/risk patterns
-  if (/fraud|scam|₹\s*\d+\s*(?:cr|crore)|money.*launder|security.*breach|sanction.*popup|data.*breach|credential.*leak|class.*action|lawsuit/i.test(lower)) {
-    return "trust_risk";
-  }
-  // Regulatory patterns
-  if (/rbi|regulatory|ban|suspended|compliance.*issue|penalty|fine|sec.*fine|enforcement.*action|investigation/i.test(lower)) {
-    return "regulatory";
-  }
-  // Financial health patterns
-  if (/loss|declin|revenue.*drop|widen.*loss|net.*loss|operating.*loss|default|bankrupt|insolven/i.test(lower)) {
-    return "financial_health";
-  }
-  // Reliability/outage patterns
-  if (/outage|service.*disrupt|downtime|system.*fail|breach|leak/i.test(lower)) {
-    return "reliability";
-  }
-  // Strategy drift patterns
-  if (/pivot|restructur|shut.*down|close.*operation|layoff/i.test(lower)) {
-    return "strategy_drift";
-  }
-
-  return "general";
-}
-
-const SIGNAL_NORMALIZATIONS: Record<string, string> = {
-  "high fees": "pricing_complaint",
-  "expensive": "pricing_complaint",
-  "costly": "pricing_complaint",
-  "overpriced": "pricing_complaint",
-  "hidden fee": "pricing_complaint",
-  "hidden cost": "pricing_complaint",
-  "transaction fee": "pricing_complaint",
-  "slow onboarding": "onboarding_delay",
-  "takes weeks": "onboarding_delay",
-  "slow integration": "integration_issue",
-  "difficult setup": "ease_of_use_issue",
-  "confusing": "ease_of_use_issue",
-  "poor support": "support_issue",
-  "unresponsive": "support_issue",
-  "buggy": "quality_issue",
-  "broken": "quality_issue",
-  "reliability": "reliability_issue",
-  "outage": "reliability_issue",
-  "payout delay": "payout_issue",
-  "account freeze": "account_issue",
-  "refund": "refund_issue",
-};
-
-// Deterministic domain → type mapping (NOT content inference)
-function detectDomainType(url: string): "review" | "news" | "independent" | "forum" {
-  const normalized = normalizeDomain(url);
-  const lower = normalized.toLowerCase();
-
-  // Review platforms
-  if (lower.includes("g2") || lower.includes("capterra") || lower.includes("trustpilot") || lower.includes("clutch") || lower.includes("goodfirms")) {
-    return "review";
-  }
-
-  // Indian startup news (independent)
-  if (lower.includes("inc42") || lower.includes("medianama") || lower.includes("entrackr") || lower.includes("dealstreet") || lower.includes("vccircle")) {
-    return "independent";
-  }
-
-  // General business news
-  if (lower.includes("moneycontrol") || lower.includes("livemint") || lower.includes("economictimes") || lower.includes("forbes") || lower.includes("bloomberg") || lower.includes("techcrunch")) {
-    return "news";
-  }
-
-  // Forums
-  if (lower.includes("reddit") || lower.includes("quora") || lower.includes("stackoverflow")) {
-    return "forum";
-  }
-
-  // Social (treat as forum)
-  if (lower.includes("twitter") || lower.includes("x.com") || lower.includes("facebook") || lower.includes("linkedin")) {
-    return "forum";
-  }
-
-  return "news";
-}
-
-function normalizeDomain(url: string): string {
-  try {
-    const hostname = new URL(url).hostname.replace("www.", "");
-    if (hostname.includes("trustpilot")) return "trustpilot";
-    if (hostname.includes("wsj")) return "wsj";
-    const parts = hostname.split(".");
-    if (parts.length >= 2) {
-      return parts.slice(-2).join(".");
-    }
-    return hostname;
-  } catch {
-    return "unknown";
-  }
-}
-
-function getDomainType(url: string): "review" | "news" | "independent" | "forum" {
-  return detectDomainType(url);
-}
-
-export function normalizeSignal(text: string): string {
-  const lower = text.toLowerCase();
-  for (const [keyword, normalized] of Object.entries(SIGNAL_NORMALIZATIONS)) {
-    if (lower.includes(keyword)) return normalized;
-  }
-  return "general";
-}
+import type { SignalSeverity, SignalAppearance } from "@/types/signals";
+import {
+  normalizeDomain,
+  getDomainType,
+} from "./utils/domain";
+import {
+  normalizeSignal,
+  classifyNegativeSignal,
+  classifySeverity,
+} from "./utils/signal-classify";
 
 function getSourceDomain(url: string): string {
   return normalizeDomain(url);
@@ -172,7 +41,6 @@ export function deriveSignals(
     signalAppearances[key].citationIds.push(citation.id);
     signalAppearances[key].domains.add(domain);
     signalAppearances[key].domainTypes.add(domainType);
-    // Upgrade severity if higher found
     if (severity === "HIGH") {
       signalAppearances[key].severity = "HIGH";
     } else if (severity === "MEDIUM" && signalAppearances[key].severity === "LOW") {
@@ -220,14 +88,9 @@ export function deriveSignals(
     }
   }
 
-  // Process negative_signals (fraud, regulatory, financial instability) from preprocessed data
-  // Using classifyNegativeSignal() to automatically detect types from text patterns
-  const v2Preprocessed = preprocessed as { negative_signals?: Array<{ text: string; type: string }> };
-  if (v2Preprocessed.negative_signals) {
-    for (const negSignal of v2Preprocessed.negative_signals.slice(0, 6)) {
-      // Auto-classify using regex patterns - works for any company, no manual mapping needed
+  if (preprocessed.negative_signals) {
+    for (const negSignal of preprocessed.negative_signals.slice(0, 6)) {
       const normalizedType = classifyNegativeSignal(negSignal.text);
-      // Determine severity based on signal type
       const severity = classifySeverity(normalizedType);
       const matchingCitations = citations.filter((c) =>
         preprocessed.raw_content.includes(c.title.slice(0, 20))
@@ -242,23 +105,14 @@ export function deriveSignals(
     const domainTypes = Array.from(appearance.domainTypes);
     const uniqueTypes = domainTypes.filter((t, i) => domainTypes.indexOf(t) === i);
 
-    // HIGH severity signals bypass cross-type validation (fraud/loss/regulatory from news are valid)
     const isHighSeverity = appearance.severity === "HIGH";
     const hasCrossTypeAgreement = uniqueTypes.length >= 2;
     const isFeature = appearance.normalizedType === "feature";
-
-    // SINGLE STRONG SOURCE: If we have at least 2 citations from a single authoritative domain, accept
     const hasSingleStrongSource = appearance.citationIds.length >= 2 && appearance.domains.size === 1;
-
-    // STARTUP MODE: For early-stage companies (low total citations), relax validation
-    // If we have very few total citations, accept single-source signals
     const isStartupMode = citations.length <= 4;
     const hasWeakSingleSource = appearance.citationIds.length >= 1 && appearance.domains.size === 1;
 
-    // Relaxed validation: accept if HIGH severity, feature, cross-type agreement,
-    // OR single strong source, OR (startup mode + weak single source)
     if (!hasCrossTypeAgreement && !isFeature && !isHighSeverity && !hasSingleStrongSource) {
-      // Startup mode: accept even single citations from single domain for early-stage companies
       if (isStartupMode && hasWeakSingleSource) {
         console.log(`[Signals] Startup mode: accepting single-source signal: ${key.slice(0, 40)}...`);
       } else {
@@ -267,7 +121,6 @@ export function deriveSignals(
       }
     }
 
-    // Log HIGH severity signal passing through
     if (isHighSeverity) {
       console.log(`[Signals] HIGH severity signal auto-validated: ${appearance.normalizedType} - ${key.slice(0, 40)}...`);
     } else if (hasSingleStrongSource) {
@@ -317,11 +170,9 @@ export function calculateConfidence(
 ): { score: number; factors: string[] } {
   const factors: string[] = [];
 
-  // Count unique normalized domains
   const uniqueDomains = new Set(citations.map(c => getSourceDomain(c.url))).size;
   const domainDiversityScore = Math.min(uniqueDomains / 3, 1);
 
-  // Count unique domain TYPES for cross-type validation
   const domainTypes = citations.map(c => getDomainType(c.url));
   const uniqueDomainTypes = new Set(domainTypes).size;
 
@@ -347,11 +198,9 @@ export function calculateConfidence(
   const signalDiversityScore = uniqueNormalized.size / Math.max(normalizedTypes.length, 1);
   factors.push(`${uniqueNormalized.size} signal types from ${normalizedTypes.length} signals`);
 
-  // Signal strength score: more signals = higher confidence, capped at 5 signals
   const signalStrengthScore = Math.min(signals.length / 5, 1);
   factors.push(`signal strength: ${signals.length} signals (need 5+ for max)`);
 
-  // Severity bonus: HIGH severity signals boost confidence
   const highSeverityCount = signals.filter(s =>
     ["trust_risk", "financial_health", "regulatory"].includes(s.normalizedType || "")
   ).length;
@@ -362,7 +211,6 @@ export function calculateConfidence(
 
   const recencyScore = 0.5;
 
-  // Base score now includes signal strength and severity
   const baseScore = (
     0.30 * sourceCountScore +
     0.20 * domainDiversityScore +
@@ -373,7 +221,6 @@ export function calculateConfidence(
     severityBonus
   );
 
-  // Hard cap: if weak negative signals (≤4), confidence ≤ 0.90
   const weakSignals = signals.filter(s =>
     ["trust_risk", "financial_health", "regulatory", "reliability"].includes(s.normalizedType || "")
   ).length;

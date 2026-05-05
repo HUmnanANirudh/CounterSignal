@@ -1,4 +1,5 @@
-import type { PreprocessedData } from "@/types";
+import type { PreprocessedData,NegativeSignalType } from "@/types";
+import { classifyNegativeSignal } from "./utils/signal-classify";
 
 const MAX_TOKENS = 6000;
 const PRICING_PATTERNS = [
@@ -9,7 +10,6 @@ const PRICING_PATTERNS = [
   /free tier|free plan|entry[- ]level|starting at/i,
 ];
 
-// Auto-detect complaints using regex patterns - works for any company
 const COMPLAINT_PATTERNS = [
   /complaint|frustrated|disappointed/i,
   /hidden\s*fee|unpredictable|surprise.*charge/i,
@@ -21,73 +21,13 @@ const COMPLAINT_PATTERNS = [
   /buggy|broken|glitch|issue|problem/i,
 ];
 
-// Auto-detect implicit complaints (high-impact negative signals)
 const IMPLICIT_COMPLAINT_PATTERNS = [
-  // Fraud/security
   /fraud|scam|₹\s*\d+\s*(?:cr|crore)|money.*launder|security.*breach|sanction.*popup/i,
-  // Regulatory
   /rbi|regulatory|ban|suspended|compliance.*issue|penalty|fine.*impose/i,
-  // Financial instability
   /loss|declin|revenue.*drop|widen.*loss|net.*loss|operating.*loss|default/i,
-  // Outages/failures
   /outage|service.*disrupt|downtime|system.*fail|breach|data.*leak/i,
-  // Risk/concern
   /risk|concern|flag|investigation|enforcement.*action/i,
 ];
-
-// Types for negative signals
-export type NegativeSignalType = "trust_risk" | "financial_health" | "regulatory" | "reliability" | "strategy_drift";
-
-function classifyNegativeSignal(text: string): NegativeSignalType | null {
-  const lower = text.toLowerCase();
-
-  if (/fraud|scam|₹\s*\d+\s*(?:cr|crore)|money.*launder|security.*breach/i.test(lower)) {
-    return "trust_risk";
-  }
-  if (/rbi|regulatory|ban|suspended|compliance.*issue|penalty/i.test(lower)) {
-    return "regulatory";
-  }
-  if (/loss|declin|revenue.*drop|widen.*loss|net.*loss|operating.*loss|default/i.test(lower)) {
-    return "financial_health";
-  }
-  if (/outage|service.*disrupt|downtime|system.*fail|breach|data.*leak/i.test(lower)) {
-    return "reliability";
-  }
-  if (/pivot|strategy|reorgani|restructur|shut.*down|close.*operation/i.test(lower)) {
-    return "strategy_drift";
-  }
-
-  return null;
-}
-
-const SIGNAL_NORMALIZATIONS: Record<string, string> = {
-  "high fees": "pricing_complaint",
-  "expensive": "pricing_complaint",
-  "costly": "pricing_complaint",
-  "overpriced": "pricing_complaint",
-  "hidden fee": "pricing_complaint",
-  "hidden cost": "pricing_complaint",
-  "unpredictable pricing": "pricing_complaint",
-  "slow onboarding": "onboarding_delay",
-  "takes weeks": "onboarding_delay",
-  "slow integration": "integration_issue",
-  "difficult setup": "ease_of_use_issue",
-  "confusing": "ease_of_use_issue",
-  "poor support": "support_issue",
-  "unresponsive": "support_issue",
-  "buggy": "quality_issue",
-  "broken": "quality_issue",
-  "reliability": "reliability_issue",
-  "outage": "reliability_issue",
-};
-
-export function normalizeSignal(text: string): string {
-  const lower = text.toLowerCase();
-  for (const [keyword, normalized] of Object.entries(SIGNAL_NORMALIZATIONS)) {
-    if (lower.includes(keyword)) return normalized;
-  }
-  return "general";
-}
 
 function truncateToTokens(text: string, maxTokens: number): string {
   const avgCharsPerToken = 4;
@@ -96,14 +36,7 @@ function truncateToTokens(text: string, maxTokens: number): string {
   return text.slice(0, maxChars) + "...";
 }
 
-export interface PreprocessedDataV2 extends PreprocessedData {
-  negative_signals: Array<{
-    text: string;
-    type: NegativeSignalType;
-  }>;
-}
-
-export function preprocess(rawContent: string): PreprocessedDataV2 {
+export function preprocess(rawContent: string): PreprocessedData {
   const sentences = rawContent.split(/[.!?\n]+/).filter(Boolean);
 
   const pricing_candidates: string[] = [];
@@ -137,11 +70,10 @@ export function preprocess(rawContent: string): PreprocessedDataV2 {
       complaint_sentences.push(s);
     }
 
-    // NEW: Detect implicit complaints (fraud, regulatory, financial instability, outages)
     for (const pattern of IMPLICIT_COMPLAINT_PATTERNS) {
       if (pattern.test(lower)) {
         const signalType = classifyNegativeSignal(s);
-        if (signalType) {
+        if (signalType !== "general") {
           negative_signals.push({ text: s, type: signalType });
           console.log(`[Preprocess] Negative signal detected: ${signalType} - ${s.slice(0, 60)}...`);
         }
@@ -160,14 +92,13 @@ export function preprocess(rawContent: string): PreprocessedDataV2 {
     }
   }
 
-  // Dedupe negative signals
   const uniqueNegativeSignals = negative_signals.filter((signal, index, self) =>
     index === self.findIndex(s => s.text === signal.text)
   );
 
   const prioritizedContent = [
     ...pricing_candidates.slice(0, 10),
-    ...uniqueNegativeSignals.map(s => s.text).slice(0, 10), // Include negative signals in context
+    ...uniqueNegativeSignals.map(s => s.text).slice(0, 10),
     ...complaint_sentences.slice(0, 10),
     ...review_blocks.slice(0, 8),
     ...feature_mentions.slice(0, 6),
@@ -188,8 +119,6 @@ export function needsFallback(preprocessed: PreprocessedData): boolean {
   return preprocessed.pricing_candidates.length === 0 || preprocessed.review_blocks.length === 0;
 }
 
-// Check if implicit complaints were detected (for data gaps tracking)
 export function hasImplicitComplaints(preprocessed: PreprocessedData): boolean {
-  const v2 = preprocessed as PreprocessedDataV2;
-  return v2.negative_signals !== undefined && v2.negative_signals.length > 0;
+  return preprocessed.negative_signals !== undefined && preprocessed.negative_signals.length > 0;
 }

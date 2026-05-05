@@ -1,19 +1,9 @@
 import { generateText } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { tavily } from "@tavily/core";
 import type { PreprocessedData, ExtractedIntelligence } from "@/types";
 
 const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
 
-async function fetchFallbackContent(url: string): Promise<string> {
-  try {
-    const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY! });
-    const result = await tvly.search(`site:${url}`, { maxResults: 1, includeAnswer: true });
-    return result.answer || result.results[0]?.content || "";
-  } catch {
-    return "";
-  }
-}
 
 function parseJsonResponse(text: string): ExtractedIntelligence | null {
   let cleaned = text.trim();
@@ -79,41 +69,6 @@ function parseJsonResponse(text: string): ExtractedIntelligence | null {
   }
 }
 
-// Schema guard: ensure extracted data has required structure
-function safeExtract(data: ExtractedIntelligence | null, competitor: string): ExtractedIntelligence {
-  if (!data) {
-    return fallbackExtractedIntelligence(competitor);
-  }
-
-  return {
-    positioning: data.positioning || { tagline: "unknown", targetSegments: [], differentiators: [] },
-    pricing_posture: data.pricing_posture || { model: "unknown", entryPrice: "opaque", tiers: [], opacity: "opaque" },
-    recent_moves: data.recent_moves || [],
-    customer_truths: data.customer_truths || { positives: [], negatives: [], keyComplaints: [] },
-  };
-}
-
-function fallbackExtractedIntelligence(competitor: string): ExtractedIntelligence {
-  return {
-    positioning: {
-      tagline: `${competitor} operates in fintech. Limited public pricing data available.`,
-      targetSegments: [],
-      differentiators: [],
-    },
-    pricing_posture: {
-      model: "opaque",
-      entryPrice: "unknown",
-      tiers: [],
-      opacity: "opaque",
-    },
-    recent_moves: [],
-    customer_truths: {
-      positives: [],
-      negatives: [],
-      keyComplaints: [],
-    },
-  };
-}
 
 function validatePricingData(pricing: ExtractedIntelligence["pricing_posture"]): ExtractedIntelligence["pricing_posture"] {
   // Reject transaction model with fixed dollar entry price
@@ -167,7 +122,6 @@ const MAX_CONTEXT_CHARS = 4000; // Cap context for latency
 export async function extract(
   preprocessed: PreprocessedData,
   competitor: string,
-  citations: Array<{ url: string; source?: string }>
 ): Promise<ExtractedIntelligence> {
   console.log(`[Extract] Starting extraction for ${competitor}`);
   console.log(`[Extract] Pricing candidates: ${preprocessed.pricing_candidates.length}`);
@@ -189,9 +143,7 @@ export async function extract(
   const complaintInfo = preprocessed.complaint_sentences.slice(0, 4).join("\n") || "None found";
   const reviewInfo = preprocessed.review_blocks.slice(0, 3).join("\n") || "None found";
 
-  // Include negative signals (fraud, regulatory, financial) in the prompt
-  const v2Preprocessed = preprocessed as { negative_signals?: Array<{ text: string; type: string }> };
-  const negativeSignalsInfo = v2Preprocessed.negative_signals?.map(s => `[${s.type}] ${s.text}`).join("\n") || "None found";
+  const negativeSignalsInfo = preprocessed.negative_signals?.map(s => `[${s.type}] ${s.text}`).join("\n") || "None found";
 
   const prompt = `Extract fintech competitor data for "${competitor}". Return ONLY valid JSON.
 
@@ -223,8 +175,6 @@ JSON (only one model, one entryPrice):
 {"positioning":{"tagline":"string","targetSegments":[],"differentiators":[]},"pricing_posture":{"model":"subscription|transaction|transaction+MDR|transaction+volume-linked|freemium|custom|unknown","entryPrice":"string","tiers":[],"opacity":"clear|opaque"},"recent_moves":[],"customer_truths":{"positives":[],"negatives":[],"keyComplaints":[]}}
 
 Return ONLY the JSON object. No markdown, no explanation.`;
-
-  let lastError: Error | null = null;
   for (let attempt = 0; attempt <= EXTRACTION_MAX_RETRIES; attempt++) {
     if (attempt > 0) {
       console.log(`[Extract] Retry attempt ${attempt}...`);
@@ -243,7 +193,6 @@ Return ONLY the JSON object. No markdown, no explanation.`;
       text = result.text;
     } catch (err) {
       console.error(`[Extract] LLM call failed: ${err instanceof Error ? err.message : String(err)}`);
-      lastError = err instanceof Error ? err : new Error(String(err));
       continue; // Try again or fall through to fallback
     }
 
@@ -263,7 +212,7 @@ Return ONLY the JSON object. No markdown, no explanation.`;
       return validated;
     }
 
-    lastError = new Error(`JSON parse failed after ${attempt + 1} attempt(s)`);
+
     console.error(`[Extract] Attempt ${attempt + 1} failed`);
   }
 

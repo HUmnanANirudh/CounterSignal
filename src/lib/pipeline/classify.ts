@@ -1,14 +1,8 @@
 import type { BFSICategory } from "@/types/entity";
+import type { ClassificationResult } from "@/types/pipeline";
 import { getMarketRole } from "@/types/entity";
 
-export interface ClassificationResult {
-  category: BFSICategory;
-  confidence: number;
-  signals: string[];
-  isCompetitor: boolean;
-  marketRole: "competitor" | "non_competitor" | "supply_side";
-  reasoning: string;
-}
+export type { ClassificationResult };
 
 const CLASSIFICATION_SIGNALS: Record<string, Array<{ pattern: RegExp; weight: number }>> = {
   payment_gateway: [

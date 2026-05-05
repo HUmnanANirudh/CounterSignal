@@ -35,3 +35,21 @@ export interface PDFOptions {
   filename?: string;
 }
 export type EditorMode = "edit" | "preview";
+
+export interface BattleCardViewProps {
+  competitor: string;
+  markdown: string;
+  isLoading: boolean;
+}
+
+export interface SearchFormProps {
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: (value: string) => void;
+  isLoading: boolean;
+}
+
+export interface BattlecardResult {
+  markdown: string;
+  error?: string;
+}

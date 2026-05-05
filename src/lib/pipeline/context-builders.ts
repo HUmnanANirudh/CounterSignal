@@ -27,7 +27,9 @@ export function buildSupplySideBattlecard(
   citations: Battlecard["citations"]
 ): Battlecard {
   const vars_layer = buildSupplySideVARSLayer(competitor, category);
-  const pricing_model = getPricingModelForCategory(category as any);
+  const pricing_model = getPricingModelForCategory(
+    category as Parameters<typeof getPricingModelForCategory>[0]
+  );
 
   return {
     competitor,
@@ -88,7 +90,9 @@ export function buildNonCompetitorBattlecard(
   citations: Battlecard["citations"]
 ): Battlecard {
   const vars_layer = buildNonCompetitorVARSLayer(competitor, category);
-  const pricing_model = getPricingModelForCategory(category as any);
+  const pricing_model = getPricingModelForCategory(
+    category as Parameters<typeof getPricingModelForCategory>[0]
+  );
 
   return {
     competitor,

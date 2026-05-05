@@ -1,4 +1,6 @@
-// Pipeline Types - shared interfaces for the pipeline
+import type { BFSICategory, MarketRole } from "./entity";
+import type { Citation } from "./battlecard";
+import type { NegativeSignalType } from "./signals";
 
 export interface PipelineConfig {
   minDocuments: number;
@@ -11,16 +13,8 @@ export const PIPELINE_CONFIG: PipelineConfig = {
   minDocuments: 5,
   minDomains: 2,
   recentDays: 180,
-  cacheTTL: 24 * 60 * 60 * 1000, // 24 hours
+  cacheTTL: 24 * 60 * 60 * 1000,
 };
-
-// Signal types for signal derivation
-export type SignalType =
-  | "financial_event"
-  | "regulatory_risk"
-  | "product_capability"
-  | "customer_sentiment"
-  | "operational_risk";
 
 export interface PreprocessedData {
   pricing_candidates: string[];
@@ -29,9 +23,12 @@ export interface PreprocessedData {
   feature_mentions: string[];
   dates: string[];
   raw_content: string;
+  negative_signals: Array<{
+    text: string;
+    type: NegativeSignalType;
+  }>;
 }
 
-// Extracted intelligence from LLM extraction
 export interface ExtractedIntelligence {
   positioning: {
     tagline: string;
@@ -52,7 +49,52 @@ export interface ExtractedIntelligence {
   recent_moves?: Array<{ name: string; date: string }>;
 }
 
-// Search debug info
+export interface ClassificationResult {
+  category: BFSICategory;
+  confidence: number;
+  signals: string[];
+  isCompetitor: boolean;
+  marketRole: MarketRole;
+  reasoning: string;
+}
+
+export interface ResolvedEntity {
+  canonicalName: string;
+  aliases: string[];
+  domain: string | null;
+  categoryHint: BFSICategory;
+  confidence: number;
+  classification: {
+    primaryRole: MarketRole;
+    category: BFSICategory;
+  };
+}
+
+export interface EntityResolutionResult {
+  resolved: ResolvedEntity | null;
+  is_verified: boolean;
+  match_sources: string[];
+  rejection_reasons: string[];
+  entityConfidence: number;
+}
+
+export type PipelineStage =
+  | "searching"
+  | "classifying"
+  | "preprocessing"
+  | "extracting"
+  | "deriving"
+  | "primitives"
+  | "vars"
+  | "rendering";
+
+export interface PipelineCallbacks {
+  onStageChange: (stage: PipelineStage, message: string) => void;
+  onChunk: (markdown: string) => void;
+  onComplete: (battlecard: import("./battlecard").Battlecard) => void;
+  onError: (error: Error) => void;
+}
+
 export interface SearchDebugInfo {
   entityConfidence: number;
   domainCount: number;
@@ -63,23 +105,18 @@ export interface SearchDebugInfo {
     company_overview: string;
     key_insight: string;
     overlap: string;
+    category?: string;
   };
   inferredCategory?: {
     category: string;
     confidence: number;
+    reasoning?: string;
   };
 }
 
 export interface SearchResult {
-  citations: Array<{
-    id: string;
-    title: string;
-    url: string;
-    source: string;
-    date?: string;
-    score?: number;
-  }>;
+  citations: Citation[];
   rawContent: string;
-  debugInfo: SearchDebugInfo;
-  entityCategoryHint: string | null;
+  entityCategoryHint: string;
+  debugInfo?: SearchDebugInfo;
 }
