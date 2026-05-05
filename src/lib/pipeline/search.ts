@@ -1,6 +1,15 @@
 import { tavily } from "@tavily/core";
 import type { Citation } from "@/types/battlecard";
-import { resolveEntity, filterContentForEntity, overlapsWithBlostem, extractProblemStatement } from "./entity-resolution";
+import {
+  resolveEntity,
+  filterContentForEntity,
+  overlapsWithBlostem,
+  extractProblemStatement,
+  extractBusinessModelHints,
+  inferCategoryFromHints,
+  getClassificationOverride,
+  getMinimalIntelligence,
+} from "./entity-resolution";
 
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 
@@ -345,12 +354,69 @@ export function buildExtendedQueries(competitor: string): string[] {
 export interface SearchResult {
   citations: Citation[];
   rawContent: string;
+  entityCategoryHint: string; // Pass through entity's category_hint for classification
   debugInfo?: {
     domainCount: number;
     totalResults: number;
     sourcesByDomain: Record<string, number>;
     relevantResults: number;
     entityConfidence: number;
+    inferredCategory?: {
+      category: string;
+      confidence: number;
+      reasoning: string;
+    };
+    minimalIntelligence?: {
+      company_overview: string;
+      category: string;
+      overlap: string;
+      key_insight: string;
+    };
+  };
+}
+
+// Secondary search for early-stage/low-content entities
+async function secondarySearch(competitor: string): Promise<{ answers: string[]; results: Array<{ url: string; title: string; content: string; score: number }> }> {
+  console.log(`[Search] Running secondary search for ${competitor}`);
+
+  const tvly = tavily({ apiKey: TAVILY_API_KEY! });
+
+  // Broader queries to catch context
+  const secondaryQueries = [
+    `${competitor} company what do they do`,
+    `${competitor} merchant of record OR payment infrastructure`,
+    `Indian fintech ${competitor}`,
+  ];
+
+  const allResults: Array<{ url: string; title: string; content: string; score: number }> = [];
+  let answer: string | undefined;
+
+  for (const query of secondaryQueries) {
+    try {
+      const result = await tvly.search(query, {
+        searchDepth: "basic",
+        topic: "finance",
+        maxResults: 3,
+        includeAnswer: "basic",
+        includeImages: false,
+      });
+      if (result.answer) {
+        answer = result.answer;
+      }
+      allResults.push(...result.results.map(r => ({
+        url: r.url,
+        title: r.title,
+        content: r.content || "",
+        score: r.score,
+      })));
+    } catch (e) {
+      console.warn(`[Search] Secondary query failed: ${query}`);
+    }
+  }
+
+  return {
+    answers: answer ? [answer] : [],
+    results: allResults,
   };
 }
 
@@ -386,7 +452,7 @@ export async function search(competitor: string): Promise<SearchResult> {
   console.log(`[Search] Valid results: ${validResults.length}/${queries.length} queries`);
 
   if (validResults.length === 0) {
-    return { citations: [], rawContent: "", debugInfo: { domainCount: 0, totalResults: 0, sourcesByDomain: {}, relevantResults: 0, entityConfidence: 0 } };
+    return { citations: [], rawContent: "", entityCategoryHint: "", debugInfo: { domainCount: 0, totalResults: 0, sourcesByDomain: {}, relevantResults: 0, entityConfidence: 0 } };
   }
 
   const allResults: Array<{ url: string; title: string; content: string; score: number; sourceWeight: number }> = [];
@@ -420,6 +486,13 @@ export async function search(competitor: string): Promise<SearchResult> {
   const entityResolution = resolveEntity(competitor);
   const entity = entityResolution.resolved!;
   console.log(`[Search] Entity resolved: ${entity.canonicalName} (confidence: ${entity.confidence})`);
+  console.log(`[Search] Entity category_hint: ${entity.category_hint}`);
+
+  // INJECT CATEGORY HINT INTO CONTENT: Pass entity's category_hint to classification
+  // This ensures known entities like Paytm, Razorpay get correct classification even with noisy content
+  const categoryHintText = entity.category_hint !== "unknown"
+    ? `\n\n[CATEGORY HINT]: The entity "${entity.canonicalName}" is classified as: ${entity.category_hint}\n`
+    : "";
 
   // ENTITY RELEVANCE FILTER: Keep docs that mention the target entity with substance
   const competitorLower = competitor.toLowerCase();
@@ -448,7 +521,8 @@ export async function search(competitor: string): Promise<SearchResult> {
     }
 
     // Use entity-aware content filter for additional verification
-    const entityFilterResult = filterContentForEntity(r.content, entity, r.url);
+    // Pass competitor (query) to ensure strict query-based matching
+    const entityFilterResult = filterContentForEntity(r.content, entity, r.url, competitor);
 
     if (!entityFilterResult.accepted) {
       rejectedResults.push({ url: r.url, title: r.title, reason: entityFilterResult.reason });
@@ -485,6 +559,68 @@ export async function search(competitor: string): Promise<SearchResult> {
   }
 
   console.log(`[Search] Entity-filtered results: ${relevantResults.length}/${allResults.length} relevant`);
+
+  // MINIMAL INTELLIGENCE MODE: If < 3 relevant docs after strict filtering, try secondary search
+  type MinimalIntelligence = NonNullable<SearchResult["debugInfo"]>["minimalIntelligence"];
+  type InferredCategory = NonNullable<SearchResult["debugInfo"]>["inferredCategory"];
+
+  let minimalIntelligence: MinimalIntelligence = undefined;
+  let inferredCategory: InferredCategory = undefined;
+
+  if (relevantResults.length < 3 && relevantResults.length > 0) {
+    console.log(`[Search] Low relevant results — attempting minimal intelligence extraction`);
+
+    // Extract business model hints from available content
+    const sampleContent = relevantResults.map(r => r.content).join("\n");
+    const hints = extractBusinessModelHints(sampleContent);
+    const categoryResult = inferCategoryFromHints(hints);
+
+    if (categoryResult.confidence > 0.5) {
+      inferredCategory = categoryResult;
+      minimalIntelligence = getMinimalIntelligence(hints, competitor);
+      console.log(`[Search] Inferred category: ${categoryResult.category} (${categoryResult.confidence})`);
+    }
+  }
+
+  // Run secondary search if we have almost no results
+  if (relevantResults.length < 2) {
+    console.log(`[Search] Critical low results — attempting secondary search`);
+    try {
+      const secondary = await secondarySearch(competitor);
+
+      // Add secondary results if they mention the entity
+      for (const r of secondary.results) {
+        const contentLower = r.content.toLowerCase();
+        const queryLower = competitor.toLowerCase();
+
+        if (contentLower.includes(queryLower)) {
+          const weight = getSourceWeight(r.url);
+          relevantResults.push({
+            url: r.url,
+            title: r.title,
+            content: r.content,
+            score: r.score,
+            sourceWeight: weight,
+          });
+          console.log(`[Search] Added from secondary: ${r.title.slice(0, 50)}...`);
+        }
+      }
+
+      // If secondary search gave us new content, try category inference again
+      if (secondary.results.length > 0 && !inferredCategory) {
+        const allContent = [...relevantResults, ...secondary.results].map(r => r.content).join("\n");
+        const hints = extractBusinessModelHints(allContent);
+        const categoryResult = inferCategoryFromHints(hints);
+
+        if (categoryResult.confidence > 0.4) {
+          inferredCategory = categoryResult;
+          minimalIntelligence = getMinimalIntelligence(hints, competitor);
+        }
+      }
+    } catch (e) {
+      console.warn(`[Search] Secondary search failed: ${e}`);
+    }
+  }
 
   // If < 3 relevant docs, flag low confidence early
   const entityConfidence = relevantResults.length >= 3 ? 0.7 : relevantResults.length >= 1 ? 0.4 : 0.1;
@@ -530,12 +666,15 @@ export async function search(competitor: string): Promise<SearchResult> {
   return {
     citations,
     rawContent,
+    entityCategoryHint: entity.category_hint !== "unknown" ? entity.category_hint : "",
     debugInfo: {
       domainCount: Object.keys(normalizedDomainCount).length,
       totalResults: allResults.length,
       sourcesByDomain: normalizedDomainCount,
       relevantResults: relevantResults.length,
       entityConfidence,
+      inferredCategory,
+      minimalIntelligence,
     },
   };
 }

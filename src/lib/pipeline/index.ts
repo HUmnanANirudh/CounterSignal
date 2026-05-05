@@ -46,6 +46,24 @@ function setCache(competitor: string, battlecard: Battlecard): void {
   cache.set(competitor, { battlecard, timestamp: Date.now() });
 }
 
+// Map entity's category_hint to CompetitorCategory
+function mapHintToCategory(hint: string): string | null {
+  const hintLower = hint.toLowerCase();
+  if (hintLower.includes("wallet") || hintLower.includes("paytm")) return "WALLET";
+  if (hintLower.includes("gateway") || hintLower.includes("razorpay") || hintLower.includes("cashfree")) return "PAYMENT_GATEWAY";
+  if (hintLower.includes("infra") || hintLower.includes("api") || hintLower.includes("setu")) return "INFRA_LAYER";
+  if (hintLower.includes("mor") || hintLower.includes("merchant")) return "PAYMENT_MOR";
+  if (hintLower.includes("issuer") || hintLower.includes("nbfc") || hintLower.includes("fd")) return "ISSUER";
+  if (hintLower.includes("broker") || hintLower.includes("groww")) return "BROKER";
+  if (hintLower.includes("aggregator") || hintLower.includes("marketplace")) return "AGGREGATOR";
+  return null;
+}
+
+// Check if a category is a competitor (vs supply_side or non_competitor)
+function isCompetitorCategory(cat: string): boolean {
+  return ["INFRA_LAYER", "PAYMENT_GATEWAY", "PAYMENT_MOR", "WALLET"].includes(cat);
+}
+
 // FALLBACK BATTLECARD: Always return a battlecard, never crash
 function fallbackBattlecard(competitor: string, reason: string): Battlecard {
   console.warn(`[Pipeline] Using fallback battlecard for ${competitor}: ${reason}`);
@@ -154,15 +172,38 @@ export async function runPipeline(
   try {
     callbacks.onStageChange("searching", `Researching ${competitor}...`);
     const searchResult = await search(competitor);
-    let { citations, rawContent, debugInfo } = searchResult;
+    let { citations, rawContent, debugInfo, entityCategoryHint } = searchResult;
+    console.log(`[Pipeline] Entity category hint: ${entityCategoryHint || "none"}`);
+
+    // Check for classification override first
+    const { getClassificationOverride } = await import("./entity-resolution");
+    const classificationOverride = getClassificationOverride(competitor);
+
+    if (classificationOverride) {
+      console.log(`[Pipeline] Classification override found: ${JSON.stringify(classificationOverride)}`);
+    }
+
+    // If entity has a known category hint, create an override
+    if (entityCategoryHint && entityCategoryHint !== "unknown") {
+      console.log(`[Pipeline] Using entity category hint: ${entityCategoryHint}`);
+    }
 
     // ENTITY CONFIDENCE CHECK: Fail fast if entity grounding is weak
     const entityConfidence = debugInfo?.entityConfidence ?? 0.5;
-    if (entityConfidence < 0.3) {
+    if (entityConfidence < 0.3 && !debugInfo?.minimalIntelligence) {
       console.warn(`[Pipeline] LOW ENTITY CONFIDENCE (${entityConfidence}) — insufficient relevant docs about ${competitor}`);
       const insufficientCard = generateInsufficientDataCard(competitor, debugInfo);
       callbacks.onChunk(renderMarkdown(insufficientCard));
       callbacks.onComplete(insufficientCard);
+      return;
+    }
+
+    // If we have minimal intelligence from fallback search, use it
+    if (debugInfo?.minimalIntelligence && citations.length === 0) {
+      console.log(`[Pipeline] Using minimal intelligence mode for ${competitor}`);
+      const minimalCard = generateMinimalIntelligenceCard(competitor, debugInfo);
+      callbacks.onChunk(renderMarkdown(minimalCard));
+      callbacks.onComplete(minimalCard);
       return;
     }
 
@@ -181,7 +222,45 @@ export async function runPipeline(
 
     callbacks.onStageChange("classifying", `Classifying ${competitor}...`);
     const preprocessed = preprocess(rawContent);
-    const classification = detectCompetitorCategory(competitor, rawContent, preprocessed.pricing_candidates[0] || "");
+
+    // PRE-INJECT: If entity has a known category hint, prepend it to content for classification
+    // This ensures Paytm ("wallet/gateway") is correctly classified even with noisy content
+    const classificationContent = entityCategoryHint && entityCategoryHint !== "unknown"
+      ? `[ENTITY_HINT]: Competitor is classified as "${entityCategoryHint}" in Blostem's database.\n\n${rawContent}`
+      : rawContent;
+
+    let classification = detectCompetitorCategory(competitor, classificationContent, preprocessed.pricing_candidates[0] || "");
+
+    // Apply classification override if classification is unknown or low confidence
+    // Also apply if entity has a known category hint (from KNOWN_ENTITIES)
+    // When confidence is very low (< 0.3), trust the entity hint over noisy content
+    const shouldApplyEntityHint = entityCategoryHint &&
+      entityCategoryHint !== "unknown" &&
+      (classification.category === "UNKNOWN" || classification.confidence < 0.3);
+
+    if (classificationOverride && (classification.category === "UNKNOWN" || classification.confidence < 0.5)) {
+      console.log(`[Pipeline] Overriding classification from ${classification.category} to ${classificationOverride.category}`);
+      classification = {
+        ...classification,
+        category: classificationOverride.category as any,
+        confidence: 0.9,
+        marketRole: classificationOverride.primary_role === "competitor" ? "competitor" : "non_competitor",
+        reasoning: `Manual override applied: ${classificationOverride.category} (${classificationOverride.primary_role})`,
+      } as any;
+    } else if (shouldApplyEntityHint) {
+      // Apply entity's known category hint (e.g., Paytm → wallet/gateway, Razorpay → payment_gateway)
+      const hintCategory = mapHintToCategory(entityCategoryHint);
+      if (hintCategory) {
+        console.log(`[Pipeline] Applying entity hint: ${entityCategoryHint} → ${hintCategory}`);
+        classification = {
+          ...classification,
+          category: hintCategory,
+          confidence: 0.85,
+          marketRole: isCompetitorCategory(hintCategory) ? "competitor" : "non_competitor",
+          reasoning: `Entity hint from known entity: ${entityCategoryHint}`,
+        } as any;
+      }
+    }
 
     console.log(`[Pipeline] Classification: ${classification.category} (confidence: ${classification.confidence.toFixed(2)}) - marketRole: ${classification.marketRole}`);
 
@@ -684,5 +763,67 @@ function generateInsufficientDataCard(competitor: string, debugInfo?: SearchResu
     citations: [],
     confidence: { score: 0.15, factors: [`entity_grounding_failed: ${relevantCount}/${totalCount} relevant docs`] },
     dataGaps: ["insufficient_entity_data", `relevant_docs_${relevantCount}_of_${totalCount}`],
+  };
+}
+
+// MINIMAL INTELLIGENCE CARD: We have SOME semantic understanding even with limited data
+function generateMinimalIntelligenceCard(competitor: string, debugInfo: SearchResult["debugInfo"]): Battlecard {
+  const minimal = debugInfo?.minimalIntelligence;
+  const inferred = debugInfo?.inferredCategory;
+
+  return {
+    competitor,
+    generatedAt: new Date().toISOString(),
+    researchDurationMs: 0,
+    positioning: {
+      tagline: minimal?.company_overview || `${competitor} — minimal data available`,
+      targetSegments: [],
+      differentiators: [],
+    },
+    pricing_posture: {
+      model: "unknown",
+      entryPrice: "opaque",
+      tiers: [],
+      opacity: "opaque",
+    },
+    recent_moves: [],
+    customer_truths: {
+      positives: [],
+      negatives: [],
+      keyComplaints: [],
+    },
+    VARS_layer: {
+      validate: `Limited data available for ${competitor} — direct research recommended.`,
+      acknowledge: minimal?.company_overview || `Inferred category: ${inferred?.category || "unknown"}`,
+      reframe: `Insufficient intelligence for reliable competitive positioning.`,
+      specify: `Verify overlap with Blostem before pursuing.`,
+    },
+    objection_handling: [],
+    AE_BATTLECARD: {
+      company_overview: minimal?.company_overview || `${competitor} — inferred as ${inferred?.category || "unknown category"}`,
+      competitor_type: "unknown",
+      category_contrast: `Overlap: ${minimal?.overlap || "partial — payment layer vs BFSI infra"}`,
+      quick_dismisses: [
+        `Verify if ${competitor} provides BFSI product APIs or just payment processing`,
+        `Confirm whether they serve Indian wealth/fintech market`,
+      ],
+      objection_handling: [],
+      why_we_win: [],
+      why_we_lose: [],
+      pricing_positioning: `Inferred from limited data: ${minimal?.key_insight || "direct research required"}`,
+      landmines: [
+        `What specific problem does ${competitor} solve for your customers?`,
+        `Do they provide APIs for FD/RD/banking products or just payments?`,
+        `How do they handle BFSI compliance for your use case?`,
+      ],
+      FUD_responses: [],
+      proof_points: [],
+      compete_aggressively_when: [],
+      signal_trace: [],
+    },
+    sourceMap: {},
+    citations: [],
+    confidence: { score: 0.35, factors: [`minimal_intelligence_mode: inferred_${inferred?.category || "unknown"}`] },
+    dataGaps: ["minimal_data", `inferred_category: ${inferred?.category || "none"}`],
   };
 }

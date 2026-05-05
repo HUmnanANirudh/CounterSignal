@@ -174,7 +174,7 @@ export async function extract(
   console.log(`[Extract] Complaints: ${preprocessed.complaint_sentences.length}`);
   console.log(`[Extract] Reviews: ${preprocessed.review_blocks.length}`);
 
-  let processedData = preprocessed;
+  const processedData = preprocessed;
 
   // NO FALLBACK: If extraction is weak, we STOP - not fill with additional content
   // Fallback content injects noise and produces hallucinated battlecards

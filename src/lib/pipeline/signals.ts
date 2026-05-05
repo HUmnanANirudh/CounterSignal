@@ -250,10 +250,21 @@ export function deriveSignals(
     // SINGLE STRONG SOURCE: If we have at least 2 citations from a single authoritative domain, accept
     const hasSingleStrongSource = appearance.citationIds.length >= 2 && appearance.domains.size === 1;
 
-    // Relaxed validation: accept if HIGH severity, feature, cross-type agreement, OR single strong source
+    // STARTUP MODE: For early-stage companies (low total citations), relax validation
+    // If we have very few total citations, accept single-source signals
+    const isStartupMode = citations.length <= 4;
+    const hasWeakSingleSource = appearance.citationIds.length >= 1 && appearance.domains.size === 1;
+
+    // Relaxed validation: accept if HIGH severity, feature, cross-type agreement,
+    // OR single strong source, OR (startup mode + weak single source)
     if (!hasCrossTypeAgreement && !isFeature && !isHighSeverity && !hasSingleStrongSource) {
-      console.log(`[Signals] Filtering: ${key.slice(0, 40)}... (types: ${uniqueTypes.join(",")}, need ≥2 or strong single source)`);
-      continue;
+      // Startup mode: accept even single citations from single domain for early-stage companies
+      if (isStartupMode && hasWeakSingleSource) {
+        console.log(`[Signals] Startup mode: accepting single-source signal: ${key.slice(0, 40)}...`);
+      } else {
+        console.log(`[Signals] Filtering: ${key.slice(0, 40)}... (types: ${uniqueTypes.join(",")}, need ≥2 or strong single source)`);
+        continue;
+      }
     }
 
     // Log HIGH severity signal passing through

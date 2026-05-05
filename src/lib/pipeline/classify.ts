@@ -22,6 +22,7 @@
 export type CompetitorCategory =
   | "INFRA_LAYER"      // API/SDK rails for BFSI (account aggregator, UPI stack, mandate APIs)
   | "PAYMENT_GATEWAY"  // Payment processing (gateway, checkout, merchant payments)
+  | "PAYMENT_MOR"      // Merchant of Record - global tax/compliance for SaaS
   | "WALLET"           // Digital wallet (mobile wallet, prepaid wallet, recharge)
   | "ISSUER"           // FD/RD/NBFC product issuers (fixed deposit, recurring deposit)
   | "AGGREGATOR"       // Marketplace (loan marketplace, comparison)
@@ -50,6 +51,7 @@ interface CapabilityProfile {
   isEndUserApp: boolean;
   hasPaymentProcessing: boolean;
   hasWalletBalance: boolean;
+  isMoR: boolean;
 }
 
 // Capability extraction - detects WHAT the company does
@@ -78,6 +80,9 @@ function extractCapabilities(combined: string): CapabilityProfile {
   // WALLET signals
   const hasWalletBalance = /\bdigital\s*wallet\b|\bmobile\s*wallet\b|\bwallet\s*balance\b|\bprepaid\s*wallet\b|\brecharge\b|\bbill\s*payment\b/i.test(lower);
 
+  // MoR (Merchant of Record) signals - global tax + compliance for SaaS
+  const hasMoR = /\bmerchant of record\b|\bglobal tax\b|\binternational payments?\b|\btax compliance.*saas\b/i.test(lower);
+
   return {
     hasAPI: hasAPI || hasOrchestration,
     hasInfraRails,
@@ -86,6 +91,7 @@ function extractCapabilities(combined: string): CapabilityProfile {
     isEndUserApp: hasEndUserApp,
     hasPaymentProcessing,
     hasWalletBalance,
+    isMoR: hasMoR,
   };
 }
 
@@ -101,6 +107,16 @@ const INFRA_SIGNALS: Array<{ pattern: RegExp; weight: number }> = [
   { pattern: /\bSDK\b.*\bbanking\b/i, weight: 0.85 },
   { pattern: /\bembed\b.*\bfintech\b/i, weight: 0.8 },
   { pattern: /\borchestration\b.*\bpayment\b/i, weight: 0.8 },
+];
+
+// Payment MoR patterns (Merchant of Record - global tax + compliance)
+const PAYMENT_MOR_SIGNALS: Array<{ pattern: RegExp; weight: number }> = [
+  { pattern: /\bmerchant of record\b/i, weight: 1.0 },
+  { pattern: /\bglobal tax\b/i, weight: 0.95 },
+  { pattern: /\binternational payments?\b/i, weight: 0.9 },
+  { pattern: /\btax compliance\b.*\bsaas\b/i, weight: 0.9 },
+  { pattern: /\bglobal pay(ment)?\b/i, weight: 0.85 },
+  { pattern: /\bcompliance[\s-]as[\s-]a[\s-]service\b/i, weight: 0.85 },
 ];
 
 // Payment gateway patterns
@@ -162,6 +178,7 @@ function scoreCategory(signals: Array<{ pattern: RegExp; weight: number }>, text
 const COMPETITOR_CATEGORIES: CompetitorCategory[] = [
   "INFRA_LAYER",
   "PAYMENT_GATEWAY",
+  "PAYMENT_MOR",
   "WALLET",
 ];
 
@@ -201,6 +218,7 @@ export function detectCompetitorCategory(
         isEndUserApp: false,
         hasPaymentProcessing: false,
         hasWalletBalance: false,
+        isMoR: false,
       },
     };
   }
@@ -214,6 +232,7 @@ export function detectCompetitorCategory(
   const scores: Record<CompetitorCategory, number> = {
     INFRA_LAYER: scoreCategory(INFRA_SIGNALS, combined),
     PAYMENT_GATEWAY: scoreCategory(PAYMENT_GATEWAY_SIGNALS, combined),
+    PAYMENT_MOR: scoreCategory(PAYMENT_MOR_SIGNALS, combined),
     WALLET: scoreCategory(WALLET_SIGNALS, combined),
     ISSUER: scoreCategory(ISSUER_SIGNALS, combined),
     AGGREGATOR: scoreCategory(AGGREGATOR_SIGNALS, combined),
@@ -274,10 +293,16 @@ export function detectCompetitorCategory(
     signals.push("cap:end_user_app_override");
   }
 
+  // Override E: MoR capability overrides to PAYMENT_MOR
+  if (capabilities.isMoR || scores.PAYMENT_MOR >= 0.5) {
+    scores.PAYMENT_MOR = Math.max(scores.PAYMENT_MOR, 1.2);
+    signals.push("cap:mor_override");
+  }
+
   // Step 5: Find winner by precedence
-  // INFRA > ISSUER > GATEWAY > WALLET > END_PRODUCT > AGGREGATOR > BROKER > LENDER
+  // INFRA > ISSUER > PAYMENT_MOR > PAYMENT_GATEWAY > WALLET > END_PRODUCT > AGGREGATOR > BROKER > LENDER
   const precedence: CompetitorCategory[] = [
-    "INFRA_LAYER", "ISSUER", "PAYMENT_GATEWAY", "WALLET", "END_PRODUCT", "AGGREGATOR", "BROKER", "LENDER", "UNKNOWN"
+    "INFRA_LAYER", "ISSUER", "PAYMENT_MOR", "PAYMENT_GATEWAY", "WALLET", "END_PRODUCT", "AGGREGATOR", "BROKER", "LENDER", "UNKNOWN"
   ];
 
   let maxScore = 0;
@@ -345,6 +370,7 @@ function roleDesc(cat: CompetitorCategory): string {
   switch (cat) {
     case "INFRA_LAYER": return "BFSI API/SDK rails (direct competitor)";
     case "PAYMENT_GATEWAY": return "payment processing";
+    case "PAYMENT_MOR": return "Merchant of Record - global tax/compliance";
     case "WALLET": return "digital wallet";
     case "ISSUER": return "FD/RD product issuer (partner)";
     case "AGGREGATOR": return "marketplace/distribution";
@@ -359,6 +385,7 @@ export function getPricingModelForCategory(cat: CompetitorCategory): string {
   switch (cat) {
     case "BROKER": return "brokerage (per-trade)";
     case "PAYMENT_GATEWAY": return "transaction + MDR (volume-linked)";
+    case "PAYMENT_MOR": return "subscription + per-transaction (tax/compliance markup)";
     case "WALLET": return "transaction + MDR + wallet-based";
     case "INFRA_LAYER": return "API usage-based (per-call)";
     case "LENDER": return "lending margin + transaction";
@@ -434,6 +461,7 @@ export function generateStrategicContext(competitor: string, classification: Cla
     END_PRODUCT: "Neobank/business banking app",
     INFRA_LAYER: "BFSI API/SDK infrastructure",
     PAYMENT_GATEWAY: "Payment processing",
+    PAYMENT_MOR: "Merchant of Record - handles global tax and compliance for SaaS",
     WALLET: "Digital wallet",
     ISSUER: "FD/RD product issuer",
     UNKNOWN: "Unclassified",
@@ -446,6 +474,7 @@ export function generateStrategicContext(competitor: string, classification: Cla
     END_PRODUCT: ["Business banking needs may overlap with BFSI infra"],
     INFRA_LAYER: ["Direct overlap — API/SDK infrastructure"],
     PAYMENT_GATEWAY: ["Payment layer — may need BFSI infra for deposits"],
+    PAYMENT_MOR: ["Partial overlap — handles global payments tax but not BFSI product APIs"],
     WALLET: ["Wallet + deposits overlap potential"],
     ISSUER: ["Product issuers can be distribution partners"],
     UNKNOWN: ["Limited overlap with BFSI infra layer"],
@@ -458,6 +487,7 @@ export function generateStrategicContext(competitor: string, classification: Cla
     END_PRODUCT: "Business banking app vs BFSI infra layer — different problems solved.",
     INFRA_LAYER: "Direct infra competition — position against API/SDK capabilities.",
     PAYMENT_GATEWAY: "Payment layer vs BFSI infra — different scope.",
+    PAYMENT_MOR: "MoR handles global tax/compliance for payments — different layer, but may compete at payment infra.",
     WALLET: "Wallet vs BFSI infra — different product layer.",
     ISSUER: "Issuers are partners, not competitors.",
     UNKNOWN: "Understand the layer this company occupies.",
@@ -487,6 +517,10 @@ export function generateStrategicContext(competitor: string, classification: Cla
     PAYMENT_GATEWAY: [
       "Are you comparing payment gateways or BFSI infra?",
       "Do you need deposit/banking APIs beyond payments?",
+    ],
+    PAYMENT_MOR: [
+      "Are you evaluating MoR solutions or BFSI infrastructure?",
+      "Do you need APIs for FD/RD/banking products or just payment compliance?",
     ],
     WALLET: [
       "Are you comparing wallets or BFSI infrastructure?",
