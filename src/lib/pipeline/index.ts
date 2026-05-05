@@ -128,7 +128,8 @@ export async function runPipeline(
     // NON-COMPETITOR PATH (aggregators, brokers, lenders, insurtech)
     if (classification.marketRole === "non_competitor") {
       console.log(`[Pipeline] ${competitor} is NOT a competitor (${classification.category}) — generating strategic context`);
-      const strategicCard = buildNonCompetitorBattlecard(competitor, classification.category, startTime, citations);
+      const { signals } = deriveSignals(preprocessed, citations);
+      const strategicCard = buildNonCompetitorBattlecard(competitor, classification.category, startTime, citations, signals);
       setCache(competitor, strategicCard);
       callbacks.onChunk(renderMarkdown(strategicCard));
       callbacks.onComplete(strategicCard);

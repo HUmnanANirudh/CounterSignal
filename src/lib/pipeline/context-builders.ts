@@ -13,10 +13,10 @@ export function buildSupplySideVARSLayer(competitor: string, category: string): 
 
 export function buildNonCompetitorVARSLayer(competitor: string, category: string): VARSLayer {
   return {
-    validate: `${competitor} is a ${category} — distribution layer, not infra competition.`,
-    acknowledge: `They solve marketplace/distribution problems, different from BFSI infra.`,
-    reframe: `Understand the layer difference — infra vs distribution.`,
-    specify: blostemProfile.VARS_context.specify,
+    validate: `Prospects mention ${competitor} when they want to build a ${category} product or use it as a benchmark.`,
+    acknowledge: `${competitor} is a strong ${category} platform with excellent scale and UX.`,
+    reframe: `${competitor} is an end-user product — it doesn't help you build your own financial stack.`,
+    specify: `Blostem gives you the infra layer to launch ${competitor}-like capabilities with FD/RD built in.`,
   };
 }
 
@@ -87,7 +87,8 @@ export function buildNonCompetitorBattlecard(
   competitor: string,
   category: string,
   startTime: number,
-  citations: Battlecard["citations"]
+  citations: Battlecard["citations"],
+  signals: import("@/types/battlecard").Signal[] = []
 ): Battlecard {
   const vars_layer = buildNonCompetitorVARSLayer(competitor, category);
   const pricing_model = getPricingModelForCategory(
@@ -99,7 +100,7 @@ export function buildNonCompetitorBattlecard(
     generatedAt: new Date().toISOString(),
     researchDurationMs: Date.now() - startTime,
     positioning: {
-      tagline: `${competitor} - ${category}, not in Blostem's competitive set`,
+      tagline: `${competitor} is a retail brokerage/platform (stocks/MF). It does not provide APIs for embedding FD/RD products into third-party apps. If you're building a fintech product, ${competitor} is a distribution endpoint, not infrastructure.`,
       targetSegments: [],
       differentiators: [],
     },
@@ -118,27 +119,40 @@ export function buildNonCompetitorBattlecard(
     VARS_layer: vars_layer,
     objection_handling: [],
     AE_BATTLECARD: {
-      company_overview: `${competitor} - ${category}, different layer than Blostem`,
+      company_overview: `${competitor} is a ${category} (end-user app layer). It does not provide APIs for embedding FD/RD products into third-party apps.`,
       competitor_type: category,
-      category_contrast: `${competitor} = non-competitor; Blostem = BFSI infrastructure layer`,
+      category_contrast: `${competitor} = ${category} (end-user app layer); Blostem = infra layer (B2B API layer for FD/RD). Blostem can power platforms like ${competitor}, not compete with them.`,
       quick_dismisses: [
-        `Is ${competitor} providing BFSI infrastructure APIs or just a product/app?`,
-        `Do they handle compliance for multiple banks/NBFCs?`,
+        `Are you building a user-facing investment app or backend banking infra?`,
+        `Are you looking for APIs to embed banking products, or an app to list them on?`
       ],
       objection_handling: [],
-      why_we_win: blostemProfile.strengths.slice(0, 2),
+      why_we_win: [
+        `${competitor} does not expose infrastructure APIs — Blostem lets you build a ${competitor}-like product with embedded FD/RD.`,
+        `Blostem provides the backend rails that power ${category} platforms, rather than competing for end-users.`
+      ],
       why_we_lose: [],
-      pricing_positioning: "Different category — not directly comparable",
+      pricing_positioning: "Different layer in the value chain",
       landmines: [
-        "What layer does this company operate at?",
-        "Do they provide APIs for banking products?",
-        "How do they handle BFSI compliance?",
+        `Do you need APIs to embed FD/RD into your product, or just a trading platform?`,
+        `Can ${competitor} help you launch your own financial product, or only serve end users?`,
       ],
       FUD_responses: [],
       proof_points: blostemProfile.differentiators.slice(0, 2),
       compete_aggressively_when: [],
-      signal_trace: [],
+      signal_trace: signals.slice(0, 3).map(s => ({ signal: s.value.slice(0, 80), type: s.normalizedType || 'general', weapon: 'Contextual signal' })),
+      strategic_relationship: `${competitor} sits above Blostem in the stack — Blostem powers products like ${competitor}, not replaces them.`,
+      why_this_appears_in_deals: [
+        `Prospect is confusing "platform" with "infrastructure"`,
+        `They are thinking of ${competitor} as a benchmark UX/product`,
+        `They are early-stage and not infra-aware yet`
+      ],
+      do_not_compete_when: [
+        `Prospect explicitly wants a retail brokerage/wealth platform`,
+        `They are not building infrastructure`
+      ],
     },
+    signals,
     sourceMap: {},
     citations: citations.slice(0, 6),
     confidence: { score: 0.7, factors: ["non-competitor classification", `category: ${category}`] },

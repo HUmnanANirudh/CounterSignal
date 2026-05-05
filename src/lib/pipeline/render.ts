@@ -228,6 +228,28 @@ export function renderMarkdown(battlecard: Battlecard): string {
     }
   }
 
+  // Strategic Relationship
+  if (AE_BATTLECARD.strategic_relationship) {
+    addSection("Strategic Relationship");
+    add(sanitize(AE_BATTLECARD.strategic_relationship, 200));
+  }
+
+  // Why This Appears in Deals
+  if (AE_BATTLECARD.why_this_appears_in_deals?.length) {
+    addSection("Why This Appears in Deals");
+    for (const reason of AE_BATTLECARD.why_this_appears_in_deals.slice(0, 3)) {
+      addBullet(reason, 100);
+    }
+  }
+
+  // Do Not Compete When
+  if (AE_BATTLECARD.do_not_compete_when?.length) {
+    addSection("Do Not Compete When");
+    for (const rule of AE_BATTLECARD.do_not_compete_when.slice(0, 2)) {
+      addBullet(rule, 100);
+    }
+  }
+
   // VARS Framework (core differentiator — always show)
   if (battlecard.VARS_layer) {
     addSection("VARS");
