@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Toolbar, StatusBar } from "@/components/editor";
 import type { BattlecardEditorProps, EditorMode } from "@/types";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export function BattlecardEditor({
   onChange,
@@ -56,7 +57,7 @@ export function BattlecardEditor({
           />
         ) : (
           <div className="p-6 prose prose-slate max-w-none dark:prose-invert">
-            <ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {content}
             </ReactMarkdown>
           </div>

@@ -1,4 +1,5 @@
 import type { Citation, ExtractedIntelligence, Signal, AE_BATTLECARD } from "@/types";
+import type { PersonaObjection } from "@/types/battlecard";
 import { classifySignalType } from "./utils/signal-classify";
 import { CATEGORY_DEFINITIONS, type BFSICategory } from "@/types/entity";
 
@@ -6,74 +7,106 @@ function isActualCustomerComplaint(signal: Signal): boolean {
   const complaintTypes = ["pricing_complaint", "support_issue", "integration_issue", "onboarding_delay", "quality_issue", "reliability"];
   return complaintTypes.includes(signal.normalizedType || "");
 }
-function deriveObjectionFromSignal(signal: Signal): string {
-  const signalType = signal.type && signal.type !== "general" ? signal.type : classifySignalType(signal.value, signal.normalizedType);
-  switch (signalType) {
-    case "regulatory": return "How does their regulatory history impact your compliance burden?";
-    case "trust_risk": return "How do they isolate merchant liability in embedded flows?";
-    case "financial_health": return "Are they stable enough for a multi-year infrastructure dependency?";
-    case "pricing_complaint": return "How do your margins scale as their transaction MDR compounds?";
-    case "reliability": return "How does their abstraction layer handle settlement failover?";
-    case "support_issue": return "How do you escalate critical banking issues without direct bank access?";
-    case "integration_issue": return "How complex is managing their fragmented point-to-point integrations?";
-    case "onboarding_delay": return "What is the real activation timeline for regulated products?";
-    default: return "How does their product architecture align with your infrastructure ownership?";
-  }
+
+interface StrategicImplication {
+  implication: string;
+  personas: {
+    CTO: { objection: string; counter: string; landmine: string };
+    Founder: { objection: string; counter: string; landmine: string };
+    Compliance: { objection: string; counter: string; landmine: string };
+  };
+  win_vector: string;
 }
 
-function deriveCounterFromSignal(signal: Signal, competitor: string): string {
-  const signalType = signal.type && signal.type !== "general" ? signal.type : classifySignalType(signal.value, signal.normalizedType);
-  const summary = signal.summary || signal.value.slice(0, 60);
-
-  switch (signalType) {
-    case "regulatory": return `${competitor}'s regulatory incidents create inherited compliance risk that could block your product launches`;
-    case "financial_health": return `Aggressive cash-burn or financial volatility signals potential platform instability; recommend verifying infrastructure isolation`;
-    case "trust_risk": return `${competitor}'s fraud/trust signals indicate gaps in liability isolation—Blostem keeps you closer to the banking rail`;
-    case "reliability": return `${competitor}'s abstraction adds points of failure; Blostem provides direct, multi-bank failover for deposits`;
-    case "pricing_complaint": return `${competitor}'s MDR-based pricing means your margins erode as you scale; Blostem offers transparent infra-only pricing`;
-    case "support_issue": return `${competitor} support treats you as a merchant; Blostem provides direct BFSI infra-level technical support`;
-    case "integration_issue": return `${competitor} requires managing multiple brittle point-to-point flows; Blostem unifies these into a single API`;
-    case "onboarding_delay": return `${competitor}'s activation timelines add significant GTM risk for regulated banking products`;
-    default: {
-      if (summary.toLowerCase().includes("valuation") || summary.toLowerCase().includes("funding") || summary.toLowerCase().includes("million") || summary.toLowerCase().includes("billion")) {
-        return `Rapid capital expansion can lead to product sprawl and increased operational complexity for your engineering team.`;
+const STRATEGIC_MAP: Record<string, StrategicImplication> = {
+  regulatory: {
+    implication: "Inherited compliance risk from bundled license model",
+    personas: {
+      CTO: {
+        objection: "How tightly coupled are your banking flows to their proprietary platform?",
+        counter: "Razorpay is a regulated entity, but using a bundled license means you inherit their regulatory surface. Blostem lets you sit directly on your bank's license, isolating you from third-party platform risk.",
+        landmine: "Who owns the audit trail when the regulator asks for direct merchant fund flow logs?"
+      },
+      Founder: {
+        objection: "What happens to your business if their RBI license gets flagged?",
+        counter: "Relying on a single aggregator for all banking products is a concentration risk. Blostem provides infrastructure that works across banks, so your business doesn't stop if one platform has an issue.",
+        landmine: "What's the plan for when you need to launch a product that their bundled license doesn't support?"
+      },
+      Compliance: {
+        objection: "Who owns liability during regulatory escalation?",
+        counter: "In a bundled MoR model, liability isolation is often opaque. Blostem provides direct BFSI infra-level technical and compliance logs so you retain ownership of the audit trail.",
+        landmine: "How do you verify fund segregation within their internal custody accounts?"
       }
-      if (summary.toLowerCase().includes("acquisition") || summary.toLowerCase().includes("merger")) {
-        return `Platform consolidation often results in support migration delays and legacy API deprecation risks.`;
+    },
+    win_vector: "Isolated regulatory risk via direct banking rails."
+  },
+  trust_risk: {
+    implication: "Merchant-of-Record (MoR) custody risk",
+    personas: {
+      CTO: {
+        objection: "How do you verify fund segregation in their pool accounts?",
+        counter: "MoR providers pool merchant funds, creating internal custody risk. Blostem's zero-custody architecture ensures funds flow directly between the bank and your merchants.",
+        landmine: "If they freeze a sub-merchant's account for 'risk', how much of your volume gets stuck?"
+      },
+      Founder: {
+        objection: "How much of your revenue is sitting in their custody accounts at any given time?",
+        counter: "Razorpay's convenience comes from them holding your funds. Blostem avoids the custody layer entirely—you keep your banking relationship and your cash flow.",
+        landmine: "What happens to your working capital if their internal fraud filters trigger a platform-wide freeze?"
+      },
+      Compliance: {
+        objection: "Is your merchant relationship direct or mediated by a third-party MoR?",
+        counter: "Mediated relationships create liability mismatch during disputes. Blostem keeps you closer to the banking rail, ensuring clear ownership of the merchant relationship.",
+        landmine: "How do you handle KYC/AML reporting when the customer relationship is technically owned by the platform?"
       }
-      return `${summary}`;
-    }
+    },
+    win_vector: "Zero-custody architecture ensures merchant fund safety."
+  },
+  financial_health: {
+    implication: "Infrastructure instability from burn-rate or valuation drops",
+    personas: {
+      CTO: {
+        objection: "What's the long-term support roadmap for this specific product line?",
+        counter: "Aggressive cash-burn or funding-chase can lead to product sprawl. Blostem's backing from Rainmatter (Zerodha) ensures a focus on core infrastructure stability over multi-year cycles.",
+        landmine: "What's the migration plan if they pivot their focus away from your segment?"
+      },
+      Founder: {
+        objection: "What happens if their pricing changes after you're deeply integrated?",
+        counter: "Burn-focused platforms often hike prices or cut support to satisfy valuation targets. Blostem is an infrastructure-first player with a sustainable, transparent business model.",
+        landmine: "Will they be around—and focused on your success—in 5 years?"
+      },
+      Compliance: {
+        objection: "How stable is the underlying entity for a multi-year infrastructure dependency?",
+        counter: "Platform volatility creates operational risk. Blostem's ecosystem alignment with Zerodha provides the capital and market credibility required for BFSI stability.",
+        landmine: "Do they have the balance sheet to cover significant liability gaps if their pool account is compromised?"
+      }
+    },
+    win_vector: "Stability backed by the Zerodha (Rainmatter) ecosystem."
   }
-}
+};
 
-function deriveLandmineFromSignal(signal: Signal): string | null {
-  const signalType = signal.type && signal.type !== "general" ? signal.type : classifySignalType(signal.value, signal.normalizedType);
-  switch (signalType) {
-    case "regulatory": return "Who owns the liability if an embedded financial product triggers an RBI investigation?";
-    case "trust_risk": return "Who owns the merchant relationship when disputes occur under the MoR structure?";
-    case "financial_health": return "Can you migrate off their infrastructure without reworking your billing and tax flows?";
-    case "pricing_complaint": return "What happens to your effective margins when their MDR scales with your volume?";
-    case "reliability": return "What SLA-backed recourse do you have during settlement disruptions?";
-    case "support_issue": return "How do you escalate compliance and tax issues without direct platform access?";
-    case "integration_issue": return "Does their abstraction layer prevent you from owning the direct banking pipes?";
-    case "onboarding_delay": return "How long does it take to activate a merchant due to their bundled underwriting?";
-    default: return "How do you manage infrastructure lock-in when using a bundled compliance layer?";
-  }
-}
-
-function deriveWinFromSignal(signal: Signal, competitor: string): string | null {
-  const signalType = signal.type && signal.type !== "general" ? signal.type : classifySignalType(signal.value, signal.normalizedType);
-  
-  switch (signalType) {
-    case "pricing_complaint": return `${competitor} bundles pricing across payments and services. Blostem offers pure-play infra pricing so your margins stay predictable at scale.`;
-    case "support_issue": return `${competitor} support is merchant-facing. Blostem provides direct developer-level access for BFSI infrastructure reliability.`;
-    case "integration_issue": return `${competitor} forces you into their specific product abstraction. Blostem gives you a unified API for multi-bank ownership.`;
-    case "onboarding_delay": return `${competitor}'s rigid underwriting creates activation bottlenecks. Blostem standardizes BFSI onboarding to speed up GTM.`;
-    case "reliability": return `${competitor} adds middleware complexity. Blostem provides direct, SLA-backed banking product rails.`;
-    case "regulatory": return `${competitor} increases inherited risk via bundled compliance. Blostem sits on native, compliant banking rails.`;
-    case "trust_risk": return `${competitor} uses a merchant custody model, limiting your control. Blostem avoids custody abstraction so you retain ownership.`;
-    default: return null;
-  }
+function getStrategicPrimitive(signal: Signal): StrategicImplication {
+  const signalType = classifySignalType(signal.value, signal.normalizedType);
+  return STRATEGIC_MAP[signalType] || {
+    implication: "General infrastructure abstraction",
+    personas: {
+      CTO: {
+        objection: "What happens if you need to switch providers later?",
+        counter: "Bundled solutions hide the cost of long-term lock-in. Blostem provides the underlying rails so you maintain ownership of your banking relationships.",
+        landmine: "How tightly coupled are your core banking flows to their proprietary platform?"
+      },
+      Founder: {
+        objection: "Are you building on a platform or on the banking rails?",
+        counter: "Building on a platform is fast, but building on rails is permanent. Blostem gives you the rails so you can scale without re-platforming later.",
+        landmine: "What is the cost of re-integrating every bank-product if you outgrow their abstraction?"
+      },
+      Compliance: {
+        objection: "Does the abstraction layer hide banking-product complexity or handle it?",
+        counter: "Hiding complexity creates 'black boxes' for compliance teams. Blostem handles the orchestration while keeping the underlying banking states transparent.",
+        landmine: "Can you produce raw banking logs for every transaction without platform mediation?"
+      }
+    },
+    win_vector: "Relationship ownership and infrastructure independence."
+  };
 }
 
 export function deriveDealPrimitives(
@@ -86,104 +119,55 @@ export function deriveDealPrimitives(
   console.log(`[DealPrimitives] Processing ${signals.length} signals for ${competitor}`);
 
   const compType = inferredCategory;
-  console.log(`[DealPrimitives] Using pipeline category: ${compType}`);
+  const contrastDesc = CATEGORY_DEFINITIONS[compType as BFSICategory] || "BFSI technology layer";
 
-  if (signals.length === 0) {
-    console.log(`[DealPrimitives] No signals — deriving from extracted intelligence`);
-    const tagline = intelligence.positioning?.tagline || "";
-    const company_overview = tagline
-      ? tagline.split(".").slice(0, 2).join(".").trim()
-      : `${competitor} — limited public data available.`;
-    const positives = intelligence.customer_truths?.positives || [];
-    const differentiators = intelligence.positioning?.differentiators || [];
-
-    // Build minimal landmines from category
-    const merchantOfRecordLandmines = [
-      "How do you handle tax compliance across multiple states?",
-      "What happens to your MoR obligations if you switch providers?",
-      "How do you manage chargeback liability today?",
-    ];
-
-    // Build category-specific FUD responses
-    const merchantOfRecordFud = [
-      "MoR providers hold merchant funds — how do you verify segregation?",
-      "Blostem provides infra-layer abstraction without MoR custody risk.",
-    ];
-
-    const contrastDesc = CATEGORY_DEFINITIONS[compType as BFSICategory] || "BFSI technology layer";
-    return {
-      company_overview,
-      competitor_type: compType,
-      category_contrast: `${competitor} = ${contrastDesc}; Blostem = banking-product infrastructure layer`,
-      quick_dismisses: [],
-      objection_handling: [
-        {
-          objection: "We prefer MoR providers for tax/compliance",
-          counter: `MoR simplifies tax collection but creates custody risk. Blostem's infra layer handles compliance without taking custody.`,
-          evidence: [],
-        },
-        {
-          objection: "How do you compare on pricing transparency?",
-          counter: `Blostem offers transparent infra-layer pricing vs. MoR margins that compound with volume.`,
-          evidence: [],
-        },
-      ],
-      why_we_win: differentiators.length > 0
-        ? [`${competitor}: ${differentiators[0]}`, "Blostem: native BFSI infra without custody risk"]
-        : ["Blostem: unified FD/RD infra layer without MoR custody complexity"],
-      why_we_lose: positives.length > 0
-        ? [`${competitor} strength: ${positives[0]}`]
-        : [],
-      pricing_positioning: `No public pricing found for ${competitor}.`,
-      landmines: merchantOfRecordLandmines,
-      FUD_responses: merchantOfRecordFud,
-      proof_points: [
-        `Blostem integrates with Zerodha for FD booking on Coin — proven at Indian fintech scale`,
-      ],
-      compete_aggressively_when: [
-        "Prospect is concerned about MoR custody or tax compliance complexity",
-        "Prospect wants BFSI infra without switching providers",
-      ],
-      signal_trace: [],
-    };
-  }
-
-  const signal_trace = signals.slice(0, 5).map(signal => ({
-    signal: signal.value.slice(0, 80),
-    weapon: `Objection derived from signal`,
-    type: classifySignalType(signal.value, signal.normalizedType),
-  }));
-
-  const citationsMap = new Map<string, string>(citations.map(c => [c.id, c.url]));
-
-  const objection_handling: AE_BATTLECARD["objection_handling"] = [];
-  const seenObjections = new Set<string>();
-
-  const actualComplaints = signals.filter(s => isActualCustomerComplaint(s));
-  if (actualComplaints.length > 0) {
-    const firstComplaint = actualComplaints[0];
-    const objection = `We already use ${competitor}`;
-    objection_handling.push({
-      objection,
-      counter: deriveCounterFromSignal(firstComplaint, competitor),
-      evidence: firstComplaint.citationIds.slice(0, 2),
+  // Build persona-specific objections
+  const topSignals = signals.slice(0, 3);
+  const persona_objections: PersonaObjection[] = [];
+  
+  if (topSignals.length > 0) {
+    const mainSignal = topSignals[0];
+    const primitive = getStrategicPrimitive(mainSignal);
+    
+    persona_objections.push({ persona: "CTO", ...primitive.personas.CTO });
+    persona_objections.push({ persona: "Founder", ...primitive.personas.Founder });
+    persona_objections.push({ persona: "Compliance", ...primitive.personas.Compliance });
+  } else {
+    // Fallback persona objections
+    persona_objections.push({ 
+      persona: "CTO", 
+      objection: "What happens if you need to switch providers later?", 
+      counter: "Bundled convenience hides the cost of lock-in. Blostem provides the rails so you maintain ownership.",
+      landmine: "How tightly coupled are your core banking flows to their proprietary platform?"
     });
-    seenObjections.add(objection.toLowerCase());
+    persona_objections.push({ 
+      persona: "Founder", 
+      objection: "What happens if pricing changes after you're deeply integrated?", 
+      counter: "Scale-focused platforms often hike prices once you are locked in. Blostem offers sustainable infra-only pricing.",
+      landmine: "Will they still be focused on your specific segment in 5 years?"
+    });
+    persona_objections.push({ 
+      persona: "Compliance", 
+      objection: "Who owns liability during regulatory escalation?", 
+      counter: "In bundled models, liability isolation is opaque. Blostem provides direct BFSI infra-level technical logs.",
+      landmine: "How do you verify fund segregation within their internal custody accounts?"
+    });
   }
 
-  for (const signal of signals) {
-    if (objection_handling.length >= 3) break;
-    const objectionText = deriveObjectionFromSignal(signal);
-    const normalizedObjection = objectionText.toLowerCase();
-    if (seenObjections.has(normalizedObjection)) continue;
-    seenObjections.add(normalizedObjection);
-    const counter = deriveCounterFromSignal(signal, competitor);
-    if (counter.includes("recommend direct research") && !signal.citationIds.length) continue;
-    objection_handling.push({ objection: objectionText, counter, evidence: signal.citationIds.slice(0, 2) });
-  }
+  // Why We Lose (GTM Realism)
+  const why_we_lose = [
+    `${competitor} already owns the payment workflow for many Indian startups, making expansion into adjacent financial tooling operationally convenient.`,
+    `Strong merchant familiarity and higher payment success rates in existing checkout flows create high switching costs.`
+  ];
 
-  console.log(`[DealPrimitives] Generated ${objection_handling.length} objections from signals`);
+  // FUD Responses (Cynical/Realist Tone)
+  const fudResponses = [
+    `Blostem is optimized for banking-product infrastructure, not maximizing payment GMV across merchants.`,
+    `Blostem's incentives are aligned with infrastructure reliability rather than expanding merchant monetization layers.`
+  ];
 
+  // Quick Dismisses (derived from actual complaints)
+  const actualComplaints = signals.filter(s => isActualCustomerComplaint(s));
   const quick_dismisses: string[] = [];
   for (const signal of actualComplaints.slice(0, 2)) {
     const signalType = classifySignalType(signal.value, signal.normalizedType);
@@ -195,100 +179,45 @@ export function deriveDealPrimitives(
       case "reliability": quick_dismisses.push(`${competitor}'s reliability issues create operational risk.`); break;
     }
   }
-
-  const why_we_win: string[] = [];
-  const seenWinReasons = new Set<string>();
-  for (const signal of actualComplaints) {
-    const winReason = deriveWinFromSignal(signal, competitor);
-    if (winReason && !seenWinReasons.has(winReason)) {
-      seenWinReasons.add(winReason);
-      why_we_win.push(winReason);
-    }
+  if (quick_dismisses.length === 0) {
+    quick_dismisses.push(`Is ${competitor} building BFSI infrastructure or just providing a bundled service layer?`);
+    quick_dismisses.push(`Does ${competitor} own the banking relationship, or are they a mediated proxy?`);
   }
 
-  const why_we_lose: string[] = [];
-  const positives = intelligence.customer_truths?.positives || [];
-  const differentiators = intelligence.positioning?.differentiators || [];
-  if (positives.length > 0) {
-    why_we_lose.push(`${competitor} strength: ${positives[0]}`);
-  } else if (differentiators.length > 0) {
-    why_we_lose.push(`${competitor} differentiator: ${differentiators[0]}`);
-  }
-
-  let pricing_positioning = "";
-  const extractedModel = intelligence.pricing_posture?.model || "";
-  const extractedEntry = intelligence.pricing_posture?.entryPrice || "";
-  if (extractedModel && extractedModel !== "unknown" && !extractedModel.includes("opaque")) {
-    pricing_positioning = `${competitor} uses ${extractedModel}`;
-    if (extractedEntry && extractedEntry !== "opaque") {
-      pricing_positioning += ` (entry: ${extractedEntry})`;
-    }
-    pricing_positioning += " — Blostem offers transparent infra-layer pricing.";
-  } else {
-    pricing_positioning = `Pricing is not publicly disclosed (typical for infrastructure / MoR providers).`;
-  }
-
-  const landmines: string[] = [];
-  const seenLandmines = new Set<string>();
-  for (const signal of signals) {
-    const landmine = deriveLandmineFromSignal(signal);
-    if (landmine && !seenLandmines.has(landmine)) {
-      seenLandmines.add(landmine);
-      landmines.push(landmine);
-    }
-  }
-
-  const fudResponses: string[] = [];
-  const hasTrustRisk = signals.some(s => classifySignalType(s.value, s.normalizedType) === "trust_risk");
-  if (hasTrustRisk) {
-    fudResponses.push(`Blostem separates you from fraud liability — wallet-layer incidents expose partners to liability that infra-layer solutions avoid.`);
-  }
-  if (hasTrustRisk || signals.length > 0) {
-    fudResponses.push(`Blostem is built by BFSI infrastructure veterans — Rainmatter backing provides capital + market credibility through Zerodha's ecosystem.`);
-  }
-
-  const proof_points: string[] = [];
-  if (positives.length > 0) {
-    proof_points.push(`${competitor}: ${positives[0]}`);
-  }
-  proof_points.push(`Blostem integrates with Zerodha for FD booking on Coin — proven at Indian fintech scale`);
-
-  const tagline = intelligence.positioning?.tagline || "";
-  const company_overview = tagline
-    ? tagline.split(".").slice(0, 2).join(".").trim()
-    : `${competitor} — direct research recommended for accurate positioning.`;
-
-  const contrastDesc = CATEGORY_DEFINITIONS[compType as BFSICategory] || "BFSI technology layer";
-  const category_contrast = `${competitor} = ${contrastDesc}; Blostem = banking-product infrastructure layer`;
-
-  const compete_aggressively_when: string[] = [];
-  const signalTypes = signals.map(s => classifySignalType(s.value, s.normalizedType));
-  if (signalTypes.includes("pricing_complaint")) compete_aggressively_when.push("Prospect complains about pricing opacity or hidden MDR costs");
-  if (signalTypes.includes("support_issue")) compete_aggressively_when.push("Prospect has experienced support delays or unresponsiveness");
-  if (signalTypes.includes("integration_issue")) compete_aggressively_when.push("Prospect is struggling with multi-bank integration complexity");
-  if (signalTypes.includes("reliability") || signalTypes.includes("trust_risk")) compete_aggressively_when.push("Prospect is concerned about payment reliability or fraud risk");
-
-  console.log(`[DealPrimitives] Generated: ${objection_handling.length} objections, ${landmines.length} landmines`);
+  const signal_trace = signals.slice(0, 3).map(signal => ({
+    signal: signal.value.slice(0, 80),
+    weapon: `Strategic primitive derivation`,
+    type: classifySignalType(signal.value, signal.normalizedType),
+  }));
 
   return {
-    company_overview,
+    company_overview: intelligence.positioning?.tagline || `${competitor} — BFSI solution provider.`,
     competitor_type: compType,
-    category_contrast,
+    category_contrast: `${competitor} = ${contrastDesc}; Blostem = banking-product infrastructure layer`,
     strategic_overlap: intelligence.strategic_overlap || {},
-    quick_dismisses: quick_dismisses.slice(0, 2),
-    objection_handling: objection_handling.slice(0, 3),
-    why_we_win: why_we_win.slice(0, 3),
-    why_we_lose: why_we_lose.slice(0, 2),
-    pricing_positioning,
-    landmines: landmines.slice(0, 3),
-    FUD_responses: fudResponses.slice(0, 2),
-    proof_points: proof_points.slice(0, 2),
+    persona_objections,
+    objection_handling: [], // Deprecated
+    quick_dismisses,
+    why_we_win: [
+      "Zero-custody architecture ensures merchant fund safety.",
+      "Native multi-bank orchestration vs third-party gateway abstraction.",
+      "Stability backed by the Zerodha (Rainmatter) ecosystem."
+    ],
+    why_we_lose,
+    pricing_positioning: `Pricing is often volume-linked (MDR) for ${competitor}, creating margin erosion at scale.`,
+    landmines: [], // Deprecated
+    FUD_responses: fudResponses,
+    proof_points: [
+      "Blostem integrates with Zerodha for FD booking on Coin — proven at scale.",
+      "Direct banking rails support for top-tier Indian financial institutions."
+    ],
     compete_aggressively_when: [
-      ...(intelligence.decision_orientation?.compete_aggressively_when || []),
-      ...compete_aggressively_when
-    ].slice(0, 3),
-    do_not_compete_when: intelligence.decision_orientation?.do_not_compete_when || [],
+      "Prospect is concerned about custody risk or concentration risk.",
+      "Prospect wants to own the direct banking relationship rather than a mediated one.",
+      "High volume merchants hitting margin limits on MDR pricing."
+    ],
     why_this_appears_in_deals: intelligence.decision_orientation?.why_this_appears_in_deals || [],
-    signal_trace: signal_trace.slice(0, 3),
+    do_not_compete_when: intelligence.decision_orientation?.do_not_compete_when || [],
+    signal_trace,
   };
 }

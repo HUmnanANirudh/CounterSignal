@@ -56,16 +56,24 @@ export interface SignalTrace {
   type: string;
 }
 
+export interface PersonaObjection {
+  persona: "CTO" | "Founder" | "Compliance";
+  objection: string;
+  counter: string;
+  landmine: string;
+}
+
 export interface AE_BATTLECARD {
   company_overview: string;
   competitor_type: CompetitorType;
   category_contrast: string;
   quick_dismisses: string[];
-  objection_handling: AEObjectionHandling[];
+  objection_handling: AEObjectionHandling[]; // Legacy for backward compat
+  persona_objections: PersonaObjection[]; // New targeted content
   why_we_win: string[];
   why_we_lose: string[];
   pricing_positioning: string;
-  landmines: string[];
+  landmines: string[]; // Legacy
   FUD_responses: string[];
   proof_points: string[];
   compete_aggressively_when: string[];
@@ -86,7 +94,8 @@ export interface Citation {
 }
 
 export interface Confidence {
-  score: number;
+  entityScore: number;
+  strategicScore: number;
   factors: string[];
 }
 

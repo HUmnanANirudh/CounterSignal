@@ -1,4 +1,4 @@
-import type { Citation, PreprocessedData, Signal } from "@/types";
+import type { Citation, PreprocessedData, Signal, Confidence } from "@/types";
 import type { SignalSeverity, SignalAppearance } from "@/types/signals";
 import {
   normalizeDomain,
@@ -59,6 +59,21 @@ export function resolveContradictions(signals: Signal[]): Signal[] {
   return resolved;
 }
 
+function isMaterialSignal(text: string): boolean {
+  const lower = text.toLowerCase();
+  
+  // Rule: Reject generic fluff
+  if (/major\s*player|leading\s*platform|comprehensive\s*solution|fast\s*growing/i.test(lower) && lower.length < 60) {
+    return false;
+  }
+
+  const containsStrategicImplication = /\b(valuation|funding|pivot|exit|acquisition|market\s*share|displace|revenue|growth\s*focus|merger)\b/i.test(lower);
+  const containsOperationalRisk = /\b(fraud|outage|delay|failed|compliance|rbi|security|penalty|violation|reliability|risk|custody|license)\b/i.test(lower);
+  const containsBuyerImpact = /\b(fee|cost|support|activation|wait|complex|pricing|mdr|markup|transparent|opaque)\b/i.test(lower);
+  
+  return containsStrategicImplication || containsOperationalRisk || containsBuyerImpact;
+}
+
 export function deriveSignals(
   preprocessed: PreprocessedData,
   citations: Citation[]
@@ -94,6 +109,7 @@ export function deriveSignals(
   };
 
   for (const candidate of preprocessed.pricing_candidates.slice(0, 6)) {
+    if (!isMaterialSignal(candidate)) continue;
     const normalizedType = normalizeSignal(candidate);
     const matchingCitations = citations.filter((c) =>
       preprocessed.raw_content.includes(c.title.slice(0, 20))
@@ -104,6 +120,7 @@ export function deriveSignals(
   }
 
   for (const complaint of preprocessed.complaint_sentences.slice(0, 8)) {
+    if (!isMaterialSignal(complaint)) continue;
     const normalizedType = normalizeSignal(complaint);
     const matchingCitations = citations.filter((c) =>
       preprocessed.raw_content.includes(c.title.slice(0, 20))
@@ -114,6 +131,7 @@ export function deriveSignals(
   }
 
   for (const review of preprocessed.review_blocks.slice(0, 5)) {
+    if (!isMaterialSignal(review)) continue;
     const normalizedType = "positive";
     const matchingCitations = citations.filter((c) =>
       preprocessed.raw_content.includes(c.title.slice(0, 20))
@@ -124,6 +142,7 @@ export function deriveSignals(
   }
 
   for (const feature of preprocessed.feature_mentions.slice(0, 4)) {
+    if (!isMaterialSignal(feature)) continue;
     const normalizedType = "feature";
     const matchingCitations = citations.filter((c) =>
       preprocessed.raw_content.includes(c.title.slice(0, 20))
@@ -135,6 +154,7 @@ export function deriveSignals(
 
   if (preprocessed.negative_signals) {
     for (const negSignal of preprocessed.negative_signals.slice(0, 6)) {
+      if (!isMaterialSignal(negSignal.text)) continue;
       const normalizedType = classifyNegativeSignal(negSignal.text);
       const severity = classifySeverity(normalizedType);
       const matchingCitations = citations.filter((c) =>
@@ -251,62 +271,43 @@ export function calculateConfidence(
   signals: Signal[],
   citations: Citation[],
   dataGaps: string[] = []
-): { score: number; factors: string[] } {
+): Confidence {
   const factors: string[] = [];
 
-  factors.push(`Entity Certainty (${Math.round(entityConfidence * 100)}%)`);
-  factors.push(`Category Certainty (${Math.round(classificationConfidence * 100)}%)`);
-  factors.push(`Extraction Quality (${Math.round(extractionQuality * 100)}%)`);
+  // 1. ENTITY CONFIDENCE (Identity & Category)
+  const entityScore = (entityConfidence * 0.6 + classificationConfidence * 0.4);
+  factors.push(`Entity Certainty (${Math.round(entityScore * 100)}%)`);
 
-  // Signal Quality & Authority
+  // 2. STRATEGIC CONFIDENCE (GTM Inference Depth)
   const uniqueDomains = new Set(citations.map(c => normalizeDomain(c.url))).size;
-  const domainDiversityScore = Math.min(uniqueDomains / 4, 1);
+  const domainDiversityScore = Math.min(uniqueDomains / 5, 1);
   const avgSignalAuthority = signals.length > 0 
     ? signals.reduce((acc, s) => acc + (s.authorityScore || 0.5), 0) / signals.length 
-    : 0.5;
+    : 0.3;
   
-  const highSeverityCount = signals.filter(s =>
-    ["trust_risk", "financial_health", "regulatory"].includes(s.normalizedType || "")
-  ).length;
+  const signalVolumeScore = Math.min(signals.length / 12, 1);
+  const corroborationBonus = signals.reduce((acc, s) => acc + (s.corroborationCount || 1), 0) / 15;
   
-  const corroborationBonus = signals.reduce((acc, s) => acc + (s.corroborationCount || 1), 0) / 10;
-  const signalQuality = Math.min(1, (domainDiversityScore * 0.3 + avgSignalAuthority * 0.5 + Math.min(corroborationBonus, 0.2)));
+  // Strategic Certainty is a product of extraction quality, domain diversity, and signal weight
+  let strategicScore = (
+    (extractionQuality * 0.3) +
+    (domainDiversityScore * 0.2) +
+    (avgSignalAuthority * 0.3) +
+    (signalVolumeScore * 0.2)
+  ) + Math.min(corroborationBonus, 0.1);
+
+  // Penalties for low strategic visibility
+  if (signals.length < 5) strategicScore *= 0.6;
+  if (uniqueDomains < 3) strategicScore *= 0.8;
   
-  factors.push(`Signal Authority (${Math.round(signalQuality * 100)}%)`);
+  const finalStrategicScore = Math.max(0.05, Math.min(0.95, strategicScore));
+  factors.push(`Strategic Depth (${Math.round(finalStrategicScore * 100)}%)`);
 
-  // Data Gap Penalty
-  const gapPenalty = dataGaps.length * 0.05;
-  
-  // Strategy Fit: If category is strictly mapped, higher confidence
-  const strategyFit = classificationConfidence > 0.7 ? 1 : 0.8;
+  console.log(`[Confidence] Entity: ${Math.round(entityScore * 100)}%, Strategic: ${Math.round(finalStrategicScore * 100)}%`);
 
-  // Extraction completeness penalty
-  let completenessPenalty = gapPenalty;
-  if (extractionQuality < 0.7) {
-    completenessPenalty += 0.1;
-    factors.push(`Low Extraction Quality (-10%)`);
-  }
-
-  // New multi-factor Model
-  let score = (
-    (entityConfidence * 0.25) +
-    (classificationConfidence * 0.25) +
-    (extractionQuality * 0.20) +
-    (signalQuality * 0.20) +
-    (strategyFit * 0.10)
-  ) - completenessPenalty;
-
-  // Signal Volume Penalty (Hard Truth)
-  // If we have < 10 signals, we can't be > 70% confident
-  if (signals.length < 5) {
-    score = Math.min(score, 0.5);
-  } else if (signals.length < 10) {
-    score = Math.min(score, 0.7);
-  }
-
-  const finalScore = Math.max(0.05, Math.min(0.98, score));
-
-  console.log(`[Confidence] Score: ${Math.round(finalScore * 100)}% (${factors.join(", ")})`);
-
-  return { score: Math.round(finalScore * 100) / 100, factors };
+  return { 
+    entityScore: Math.round(entityScore * 100) / 100, 
+    strategicScore: Math.round(finalStrategicScore * 100) / 100,
+    factors 
+  };
 }

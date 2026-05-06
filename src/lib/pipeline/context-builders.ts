@@ -75,10 +75,15 @@ export function buildSupplySideBattlecard(
       proof_points: BLOSTEM_PROFILE.differentiators.slice(0, 2),
       compete_aggressively_when: [],
       signal_trace: [],
+      persona_objections: [],
     },
     sourceMap: {},
     citations: citations.slice(0, 6),
-    confidence: { score: 0.8, factors: ["supply_side classification", `category: ${category}`] },
+    confidence: { 
+      entityScore: 0.8, 
+      strategicScore: 0.4, 
+      factors: ["supply_side classification", `category: ${category}`] 
+    },
     dataGaps: [],
   };
 }
@@ -151,11 +156,16 @@ export function buildNonCompetitorBattlecard(
         `Prospect explicitly wants a retail brokerage/wealth platform`,
         `They are not building infrastructure`
       ],
+      persona_objections: [],
     },
     signals,
     sourceMap: {},
     citations: citations.slice(0, 6),
-    confidence: { score: 0.7, factors: ["non-competitor classification", `category: ${category}`] },
+    confidence: { 
+      entityScore: 0.7, 
+      strategicScore: 0.5, 
+      factors: ["non-competitor classification", `category: ${category}`] 
+    },
     dataGaps: ["non_competitor_category"],
   };
 }
@@ -215,10 +225,15 @@ export function buildInsufficientDataBattlecard(
       proof_points: [],
       compete_aggressively_when: [],
       signal_trace: [],
+      persona_objections: [],
     },
     sourceMap: {},
     citations: [],
-    confidence: { score: 0.15, factors: [`entity_grounding_failed: ${relevantCount}/${totalCount} relevant docs`] },
+    confidence: { 
+      entityScore: 0.15, 
+      strategicScore: 0.05, 
+      factors: [`entity_grounding_failed: ${relevantCount}/${totalCount} relevant docs`] 
+    },
     dataGaps: ["insufficient_entity_data", `relevant_docs_${relevantCount}_of_${totalCount}`],
   };
 }
@@ -273,10 +288,15 @@ export function buildInternalProfileBattlecard(competitor: string): Battlecard {
       proof_points: [...BLOSTEM_PROFILE.differentiators],
       compete_aggressively_when: [],
       signal_trace: [],
+      persona_objections: [],
     },
     sourceMap: {},
     citations: [],
-    confidence: { score: 1.0, factors: ["internal_profile", "blostem_reference"] },
+    confidence: { 
+      entityScore: 1.0, 
+      strategicScore: 1.0, 
+      factors: ["internal_profile", "blostem_reference"] 
+    },
     dataGaps: [],
   };
 }

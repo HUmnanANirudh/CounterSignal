@@ -172,28 +172,25 @@ export async function runPipeline(
       dataGaps
     );
 
-    // If signals are empty but we have classification, boost confidence from classification
+    // If signals are empty but we have classification, boost strategic score slightly from classification
     if (signals.length === 0) {
-      confidence.score = Math.max(confidence.score, classification.confidence * 0.7);
-      confidence.factors.push(`⚠ No validated signals — using classification confidence (${classification.category})`);
+      confidence.strategicScore = Math.max(confidence.strategicScore, classification.confidence * 0.4);
+      confidence.factors.push(`⚠ No validated signals — using classification fallback for strategy`);
     }
 
-    // MINIMAL GATING: Only suppress at very low confidence, and always show basic structure
-    const suppressVARS = confidence.score < 0.4;
-    const suppressObjections = confidence.score < 0.4;
-    const suppressLandmines = confidence.score < 0.3;
+    // MINIMAL GATING: Use strategicScore for GTM gating
+    const suppressVARS = confidence.strategicScore < 0.3;
+    const suppressObjections = confidence.strategicScore < 0.4;
+    const suppressLandmines = confidence.strategicScore < 0.3;
 
-    console.log(`[Pipeline] Confidence: ${confidence.score} — VARS: ${suppressVARS ? "suppressed" : "shown"}, Objections: ${suppressObjections ? "suppressed" : "shown"}, Landmines: ${suppressLandmines ? "suppressed" : "shown"}`);
+    console.log(`[Pipeline] Confidence (Entity: ${confidence.entityScore}, Strategic: ${confidence.strategicScore}) — VARS: ${suppressVARS ? "suppressed" : "shown"}, Objections: ${suppressObjections ? "suppressed" : "shown"}, Landmines: ${suppressLandmines ? "suppressed" : "shown"}`);
 
     callbacks.onStageChange("primitives", "Generating deal primitives for AE use...");
     const raw_ae_battlecard = deriveDealPrimitives(extracted, signals, citations, competitor, classification.category);
 
     // Apply confidence gating to deal primitives
     if (suppressObjections) {
-      raw_ae_battlecard.objection_handling = [];
-    }
-    if (suppressLandmines) {
-      raw_ae_battlecard.landmines = [];
+      raw_ae_battlecard.persona_objections = [];
     }
     if (suppressVARS) {
       raw_ae_battlecard.quick_dismisses = [];
