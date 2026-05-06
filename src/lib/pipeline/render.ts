@@ -78,8 +78,9 @@ export function renderMarkdown(battlecard: Battlecard): string {
 
   // Header
   add(`# ${competitor} Battlecard`);
-  const { entityScore, strategicScore } = confidence;
-  add(`**Entity Confidence: ${Math.round(entityScore * 100)}%** | **Strategic Confidence: ${Math.round(strategicScore * 100)}%**`);
+  const { entityScore, capabilityScore, strategicScore, overallScore } = confidence;
+  add(`**Entity Certainty: ${Math.round(entityScore * 100)}%** | **Capability Accuracy: ${Math.round(capabilityScore * 100)}%** | **Strategic Depth: ${Math.round(strategicScore * 100)}%**`);
+  add(`*Overall Reliability: ${Math.round(overallScore * 100)}%*`);
   add(`*Generated: ${new Date(battlecard.generatedAt).toLocaleString()}*`);
   add(`---`);
 
@@ -125,9 +126,9 @@ export function renderMarkdown(battlecard: Battlecard): string {
   }
 
   // Pricing
-  if (battlecard.pricing_posture && battlecard.pricing_posture.opacity === 'clear') {
-    addSection("Pricing Posture");
-    add(`Model: ${sanitize(battlecard.pricing_posture.model)} | Entry: ${sanitize(battlecard.pricing_posture.entryPrice)}`);
+  if (AE_BATTLECARD.pricing_positioning) {
+    addSection("Pricing & Monetization");
+    add(complete(sanitize(AE_BATTLECARD.pricing_positioning, 300)));
   }
 
   // FUD Responses (Cynical/Realist Tone)
@@ -142,24 +143,23 @@ export function renderMarkdown(battlecard: Battlecard): string {
   if (AE_BATTLECARD.strategic_overlap && Object.keys(AE_BATTLECARD.strategic_overlap).length > 0) {
     addSection("Capability Overlap Matrix");
     const matrix = AE_BATTLECARD.strategic_overlap;
-    const formatValue = (v: string) => {
-      switch (v) {
-        case 'native': return '🟢 Native';
-        case 'partnered': return '🟡 Partnered';
-        case 'partial': return '🟠 Partial';
-        case 'none': return '🔴 None';
-        default: return '🔴 None';
-      }
+    const formatValue = (cap: string) => {
+      const res = matrix[cap];
+      if (!res || res.value === 'none') return '🔴 None';
+      
+      const icon = res.value === 'native' ? '🟢' : (res.value === 'partnered' ? '🟡' : '🟠');
+      const label = res.value.charAt(0).toUpperCase() + res.value.slice(1);
+      return `${icon} ${label}`;
     };
     
     add(`| Capability | Blostem | ${battlecard.competitor} |`);
     add(`| :--- | :--- | :--- |`);
-    add(`| Payment Routing | 🔴 None | ${formatValue(matrix.payment_routing || 'none')} |`);
-    add(`| Deposit Lifecycle | 🟢 Native | ${formatValue(matrix.deposit_lifecycle || 'none')} |`);
-    add(`| KYC / KYB | 🟢 Native | ${formatValue(matrix.kyc_kyb || 'none')} |`);
-    add(`| Banking Compliance | 🟢 Native | ${formatValue(matrix.banking_compliance || 'none')} |`);
-    add(`| Tax Handling | 🔴 None | ${formatValue(matrix.tax_handling || 'none')} |`);
-    add(`| Regulatory Orchestration | 🟢 Native | ${formatValue(matrix.reg_orchestration || 'none')} |`);
+    add(`| Payment Routing | 🔴 None | ${formatValue('payment_routing')} |`);
+    add(`| Deposit Lifecycle | 🟢 Native | ${formatValue('deposit_lifecycle')} |`);
+    add(`| KYC / KYB | 🟢 Native | ${formatValue('kyc_kyb')} |`);
+    add(`| Banking Compliance | 🟢 Native | ${formatValue('banking_compliance')} |`);
+    add(`| Tax Handling | 🔴 None | ${formatValue('tax_handling')} |`);
+    add(`| Regulatory Orchestration | 🟢 Native | ${formatValue('reg_orchestration')} |`);
     add("");
     add(`**Legend:** 🟢 Native | 🟡 Partnered | 🟠 Partial | 🔴 None`);
     add("");

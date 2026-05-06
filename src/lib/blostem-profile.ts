@@ -1,21 +1,21 @@
 export const BLOSTEM_PROFILE = {
   name: "Blostem",
-  tagline: "Standardized infrastructure for regulated banking products (FD/RD)",
-  description: `Blostem is a plug-and-play banking infrastructure layer for India. They offer a single platform that lets apps (wealthtechs, brokerages, NBFCs) embed fixed deposits (FDs) and recurring deposits (RDs) from multiple banks through a standardized onboarding, booking, and servicing flow.`,
+  tagline: "Payment aggregator equivalent for banking products",
+  description: `Blostem is essentially a payment aggregator equivalent for banking products. They offer a single platform that lets apps (wealth apps, brokerages, NBFCs, and other fintechs) embed and offer FDs from multiple banks and NBFCs through a standardised onboarding, booking, and servicing flow—without building custom integrations with each institution.`,
   core_capabilities: [
-    "Multi-bank FD/RD infrastructure",
-    "Standardized onboarding & KYC rails",
-    "Banking product orchestration API",
-    "Ledgering and reconciliation for deposits",
-    "Credit on UPI (Future)",
-    "FD-backed credit cards (Future)"
+    "Single platform for multi-bank FD/RD onboarding & booking",
+    "Standardized banking product servicing flow",
+    "Consolidated reconciliation & settlement rails",
+    "Direct bank-partner collaborations for regulated products",
+    "Credit on UPI (In Development)",
+    "FD-backed credit cards (In Development)"
   ],
   differentiators: [
-    "Single API vs stitching together individual bank integrations",
-    "B2B infra layer—Blostem doesn't take merchant custody",
+    "Eliminates custom integrations with individual banks",
+    "One-stop infrastructure for wealth apps and brokerages",
     "Backed by Rainmatter (Zerodha ecosystem)",
-    "Standardizes regulated banking correspondent workflows",
-    "Native BFSI rails vs general-purpose fintech abstraction"
+    "Trusted by Zerodha — integrating FDs on Coin",
+    "Developing high-yield credit products with partner banks"
   ],
   market_context: {
     category: "Banking Product Infrastructure",

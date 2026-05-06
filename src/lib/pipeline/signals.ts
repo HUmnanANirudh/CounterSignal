@@ -274,40 +274,57 @@ export function calculateConfidence(
 ): Confidence {
   const factors: string[] = [];
 
-  // 1. ENTITY CONFIDENCE (Identity & Category)
+  // 1. ENTITY SCORE (Identity & Category)
   const entityScore = (entityConfidence * 0.6 + classificationConfidence * 0.4);
   factors.push(`Entity Certainty (${Math.round(entityScore * 100)}%)`);
 
-  // 2. STRATEGIC CONFIDENCE (GTM Inference Depth)
+  // 2. EVIDENCE SCORE (Source quality & diversity)
   const uniqueDomains = new Set(citations.map(c => normalizeDomain(c.url))).size;
   const domainDiversityScore = Math.min(uniqueDomains / 5, 1);
   const avgSignalAuthority = signals.length > 0 
     ? signals.reduce((acc, s) => acc + (s.authorityScore || 0.5), 0) / signals.length 
     : 0.3;
-  
-  const signalVolumeScore = Math.min(signals.length / 12, 1);
+  const evidenceScore = (domainDiversityScore * 0.5 + avgSignalAuthority * 0.5);
+  factors.push(`Source Reliability (${Math.round(evidenceScore * 100)}%)`);
+
+  // 3. CAPABILITY SCORE (Feature/overlap accuracy)
+  const signalVolumeScore = Math.min(signals.length / 10, 1);
   const corroborationBonus = signals.reduce((acc, s) => acc + (s.corroborationCount || 1), 0) / 15;
-  
-  // Strategic Certainty is a product of extraction quality, domain diversity, and signal weight
-  let strategicScore = (
-    (extractionQuality * 0.3) +
-    (domainDiversityScore * 0.2) +
-    (avgSignalAuthority * 0.3) +
-    (signalVolumeScore * 0.2)
-  ) + Math.min(corroborationBonus, 0.1);
+  const capabilityScore = Math.max(0.1, (signalVolumeScore * 0.7 + Math.min(corroborationBonus, 0.3)));
+  factors.push(`Capability Depth (${Math.round(capabilityScore * 100)}%)`);
 
-  // Penalties for low strategic visibility
-  if (signals.length < 5) strategicScore *= 0.6;
-  if (uniqueDomains < 3) strategicScore *= 0.8;
-  
-  const finalStrategicScore = Math.max(0.05, Math.min(0.95, strategicScore));
-  factors.push(`Strategic Depth (${Math.round(finalStrategicScore * 100)}%)`);
+  // 4. STRATEGIC SCORE (GTM reasoning/implication accuracy)
+  // Higher when extraction is high quality and we have diverse evidence
+  const strategicScore = (extractionQuality * 0.4 + evidenceScore * 0.4 + capabilityScore * 0.2);
+  factors.push(`Strategic Depth (${Math.round(strategicScore * 100)}%)`);
 
-  console.log(`[Confidence] Entity: ${Math.round(entityScore * 100)}%, Strategic: ${Math.round(finalStrategicScore * 100)}%`);
+  // 5. MARKET SCORE (Category/macro understanding)
+  const marketScore = (classificationConfidence * 0.8 + domainDiversityScore * 0.2);
+  factors.push(`Market Context (${Math.round(marketScore * 100)}%)`);
+
+  // Overall Score Calculation (Weighted)
+  let overallScore = (
+    entityScore * 0.3 +
+    capabilityScore * 0.2 +
+    strategicScore * 0.2 +
+    marketScore * 0.15 +
+    evidenceScore * 0.15
+  );
+
+  // Penalties
+  if (signals.length < 5) overallScore *= 0.8;
+  if (uniqueDomains < 3) overallScore *= 0.9;
+  if (dataGaps.length > 2) overallScore *= 0.85;
+
+  console.log(`[Confidence] Multi-factor: E:${Math.round(entityScore * 100)}%, S:${Math.round(strategicScore * 100)}%, C:${Math.round(capabilityScore * 100)}%`);
 
   return { 
-    entityScore: Math.round(entityScore * 100) / 100, 
-    strategicScore: Math.round(finalStrategicScore * 100) / 100,
+    entityScore: Math.round(entityScore * 100) / 100,
+    capabilityScore: Math.round(capabilityScore * 100) / 100,
+    strategicScore: Math.round(strategicScore * 100) / 100,
+    marketScore: Math.round(marketScore * 100) / 100,
+    evidenceScore: Math.round(evidenceScore * 100) / 100,
+    overallScore: Math.round(overallScore * 100) / 100,
     factors 
   };
 }

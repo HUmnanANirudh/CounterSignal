@@ -81,7 +81,11 @@ export function buildSupplySideBattlecard(
     citations: citations.slice(0, 6),
     confidence: { 
       entityScore: 0.8, 
+      capabilityScore: 0.2,
       strategicScore: 0.4, 
+      marketScore: 0.5,
+      evidenceScore: 0.3,
+      overallScore: 0.4,
       factors: ["supply_side classification", `category: ${category}`] 
     },
     dataGaps: [],
@@ -163,7 +167,11 @@ export function buildNonCompetitorBattlecard(
     citations: citations.slice(0, 6),
     confidence: { 
       entityScore: 0.7, 
+      capabilityScore: 0.3,
       strategicScore: 0.5, 
+      marketScore: 0.6,
+      evidenceScore: 0.4,
+      overallScore: 0.5,
       factors: ["non-competitor classification", `category: ${category}`] 
     },
     dataGaps: ["non_competitor_category"],
@@ -231,7 +239,11 @@ export function buildInsufficientDataBattlecard(
     citations: [],
     confidence: { 
       entityScore: 0.15, 
+      capabilityScore: 0.05,
       strategicScore: 0.05, 
+      marketScore: 0.1,
+      evidenceScore: 0.1,
+      overallScore: 0.1,
       factors: [`entity_grounding_failed: ${relevantCount}/${totalCount} relevant docs`] 
     },
     dataGaps: ["insufficient_entity_data", `relevant_docs_${relevantCount}_of_${totalCount}`],
@@ -244,7 +256,7 @@ export function buildInternalProfileBattlecard(competitor: string): Battlecard {
     generatedAt: new Date().toISOString(),
     researchDurationMs: 0,
     positioning: {
-      tagline: "Banking infrastructure layer for regulated products (FDs, RDs, credit)",
+      tagline: "Payment aggregator equivalent for banking products (standardized FD/RD flows)",
       targetSegments: [...BLOSTEM_PROFILE.market_context.target_segments],
       differentiators: [...BLOSTEM_PROFILE.differentiators],
     },
@@ -257,10 +269,10 @@ export function buildInternalProfileBattlecard(competitor: string): Battlecard {
     recent_moves: [],
     customer_truths: {
       positives: [
-        "Single API for multi-bank FD/RD access",
-        "Standardized onboarding, booking, and servicing flow",
-        "Purpose-built for compliance with regulatory requirements",
-        "Partner network of banks and NBFCs",
+        "Single platform for multi-bank FD/RD onboarding & booking",
+        "Eliminates the need for custom integrations with individual banks",
+        "Standardized servicing and reconciliation flow for banking products",
+        "Partner network of banks and NBFCs for regulated asset access",
         "Trusted by Zerodha — integrating FD on Coin",
         "Backed by Rainmatter (Zerodha's VC arm)",
       ],
@@ -294,7 +306,11 @@ export function buildInternalProfileBattlecard(competitor: string): Battlecard {
     citations: [],
     confidence: { 
       entityScore: 1.0, 
+      capabilityScore: 1.0,
       strategicScore: 1.0, 
+      marketScore: 1.0,
+      evidenceScore: 1.0,
+      overallScore: 1.0,
       factors: ["internal_profile", "blostem_reference"] 
     },
     dataGaps: [],

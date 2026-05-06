@@ -5,14 +5,14 @@ export const CATEGORY_STRATEGIES: Record<BFSICategory, CategoryStrategy> = {
   payment_gateway: {
     validate: "Gateways optimize transaction acceptance and checkout reliability",
     acknowledge: "Handles checkout conversion and acquiring bank routing",
-    reframe: "Payment orchestration does not solve BFSI product infrastructure complexity",
-    specify: "Blostem standardizes banking-product integrations across providers, moving beyond checkout",
+    reframe: "Payment orchestration does not solve the orchestration complexity of regulated banking products",
+    specify: "Blostem collaborates with several banks and NBFCs, facilitating FD bookings through a standardized flow.",
   },
   payment_aggregator: {
     validate: "Aggregators simplify merchant onboarding and multi-modal payment acceptance",
     acknowledge: "Abstracts the complexity of managing multiple acquiring bank relationships",
     reframe: "Aggregators move funds but do not provide the ledgering and regulatory rails for banking products",
-    specify: "Blostem provides the deep integration layer required for FD/RD creation, not just fund collection",
+    specify: "Blostem is the payment aggregator equivalent for banking products—standardizing deposit flows across multiple banks.",
   },
   wallet: {
     validate: "Wallets simplify consumer payments and transaction flows",
@@ -29,8 +29,8 @@ export const CATEGORY_STRATEGIES: Record<BFSICategory, CategoryStrategy> = {
   payment_orchestration: {
     validate: "Orchestrators optimize routing across multiple payment gateways to improve success rates",
     acknowledge: "Manages complex checkout routing and failover logic",
-    reframe: "Routing transactions does not solve the compliance and integration complexity of booking deposits",
-    specify: "Blostem orchestrates banking APIs and FD/RD lifecycle events, not just payment routing",
+    reframe: "Routing transactions does not solve the maintenance overhead of multiple direct bank integrations",
+    specify: "Blostem is the payment aggregator equivalent for banking products—standardizing onboarding and booking.",
   },
   merchant_of_record: {
     validate: "Teams use MoR providers to simplify global payments, tax handling, and compliance",
@@ -44,7 +44,7 @@ export const CATEGORY_STRATEGIES: Record<BFSICategory, CategoryStrategy> = {
     validate: "Banking APIs provide foundational access to underlying core banking systems",
     acknowledge: "Abstracts legacy bank connectivity into modern REST interfaces",
     reframe: "Raw banking APIs require heavy lifting to orchestrate into compliant financial products",
-    specify: "Blostem provides a managed product layer (FD/RD) on top of raw APIs, handling the orchestration logic",
+    specify: "Blostem is the payment aggregator equivalent for banking products—providing a single platform for multi-bank orchestration.",
   },
   embedded_finance_infra: {
     validate: "Embedded finance layers allow platforms to offer banking services natively",

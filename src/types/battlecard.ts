@@ -78,7 +78,11 @@ export interface AE_BATTLECARD {
   proof_points: string[];
   compete_aggressively_when: string[];
   signal_trace: SignalTrace[];
-  strategic_overlap?: Record<string, "native" | "partnered" | "partial" | "none">;
+  strategic_overlap?: Record<string, {
+    value: "native" | "partnered" | "partial" | "none";
+    confidence: number;
+    evidence?: string;
+  }>;
   strategic_relationship?: string;
   why_this_appears_in_deals?: string[];
   do_not_compete_when?: string[];
@@ -94,8 +98,12 @@ export interface Citation {
 }
 
 export interface Confidence {
-  entityScore: number;
-  strategicScore: number;
+  entityScore: number;     // Identity & category accuracy
+  capabilityScore: number; // Feature/overlap accuracy
+  strategicScore: number;  // GTM reasoning/implication accuracy
+  marketScore: number;     // Category/macro understanding
+  evidenceScore: number;   // Source quality & diversity
+  overallScore: number;
   factors: string[];
 }
 
