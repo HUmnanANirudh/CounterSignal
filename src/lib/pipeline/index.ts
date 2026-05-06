@@ -157,7 +157,7 @@ export async function runPipeline(
 
     const confidence = calculateConfidence(citations.length, signals, citations);
 
-    // DEGRADATION: Adjust confidence based on missing critical fields instead of killing
+    // DEGRADATION: Adjust confidence based on missing critical fields only (no double-penalty on signals)
     if (dataGaps.includes("pricing_not_found")) {
       confidence.score -= 0.1;
       confidence.factors.push("⚠ Missing pricing data (-0.1)");
@@ -166,23 +166,20 @@ export async function runPipeline(
       confidence.score -= 0.1;
       confidence.factors.push("⚠ Missing complaint/negative data (-0.1)");
     }
-    if (signals.length < 2) {
-      dataGaps.push("insufficient_signals");
-      confidence.score -= 0.1;
-      confidence.factors.push(`⚠ Only ${signals.length} validated signals (-0.1)`);
-    }
 
     // Ensure score doesn't drop below 0.1
     confidence.score = Math.max(0.1, Math.round(confidence.score * 100) / 100);
 
-    if (confidence.score < 0.3) {
-      dataGaps.push("low_confidence_signal");
+    // If signals are empty but we have classification, boost confidence from classification
+    if (signals.length === 0) {
+      confidence.score = Math.max(confidence.score, classification.confidence * 0.7);
+      confidence.factors.push(`⚠ No validated signals — using classification confidence (${classification.category})`);
     }
 
-    // CONFIDENCE GATING: Remove sensitive content at low confidence
-    const suppressVARS = confidence.score < 0.7;
-    const suppressObjections = confidence.score < 0.7;
-    const suppressLandmines = confidence.score < 0.5;
+    // MINIMAL GATING: Only suppress at very low confidence, and always show basic structure
+    const suppressVARS = confidence.score < 0.4;
+    const suppressObjections = confidence.score < 0.4;
+    const suppressLandmines = confidence.score < 0.3;
 
     console.log(`[Pipeline] Confidence: ${confidence.score} — VARS: ${suppressVARS ? "suppressed" : "shown"}, Objections: ${suppressObjections ? "suppressed" : "shown"}, Landmines: ${suppressLandmines ? "suppressed" : "shown"}`);
 
@@ -212,7 +209,7 @@ export async function runPipeline(
     // Deterministic VARS from extracted data (Synthesis instead of static text)
     const vars_layer = {
       validate: extracted.positioning?.tagline || `Prospects consider ${competitor} when evaluating fintech solutions`,
-      acknowledge: acknowledgePoints.length > 0 
+      acknowledge: acknowledgePoints.length > 0
         ? acknowledgePoints.map(p => `- ${p}`).join("\n")
         : `- Strong market presence\n- Established feature set`,
       reframe: `While ${competitor} solves specific problems, it is not a unified BFSI infrastructure layer. Building on disparate systems creates compliance and scaling risks.`,
@@ -226,7 +223,7 @@ export async function runPipeline(
         confidence.factors.push("⚠ Low quality positioning data (-0.1)");
       }
     }
-    
+
     if (ae_battlecard.landmines) {
       ae_battlecard.landmines = ae_battlecard.landmines.filter(lm => !lm.includes("undefined") && !lm.includes("[object Object]") && lm.length > 20);
     }

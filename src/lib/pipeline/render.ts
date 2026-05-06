@@ -1,7 +1,7 @@
 import type { Battlecard } from "@/types/battlecard";
 
-// HARD LIMIT: Total output lines
-const MAX_TOTAL_LINES = 40;
+// HARD LIMIT: Total output lines - increased for full AE sections
+const MAX_TOTAL_LINES = 1200;
 const MAX_WORDS_PER_DISMISS = 12;
 
 // Text sanitization - AE-ready language (strict)

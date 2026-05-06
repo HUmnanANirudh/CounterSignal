@@ -10,11 +10,10 @@ export async function normalizeSignals(rawSignals: Omit<Signal, 'summary' | 'evi
 
   console.log(`[Normalize] Normalizing ${rawSignals.length} signals via LLM...`);
 
-  // Basic pre-filtering to avoid sending pure garbage to LLM
   const preFiltered = rawSignals.filter(s => {
     if (s.value.length < 15) return false;
     if (s.value.includes("http://") || s.value.includes("https://")) return false;
-    if (/^[\d\s\.,$]+$/.test(s.value)) return false; // Pure numbers/currency
+    if (/^[\d\s\.,$]+$/.test(s.value)) return false;
     return true;
   });
 
@@ -50,9 +49,10 @@ ${preFiltered.map((s, i) => `[${i}] TYPE: ${s.type} | RAW: ${s.value}`).join("\n
       }),
       prompt,
       temperature: 0.1,
+      maxOutputTokens: 12000,
     });
 
-    const normalizedMap = new Map(result.output.normalized.map((n: any) => [n.index, n]));
+    const normalizedMap = new Map(result.output.normalized.map((n) => [n.index, n] as [number, { index: number; isValid: boolean; summary: string; evidence: string }]));
     const finalSignals: Signal[] = [];
 
     for (let i = 0; i < preFiltered.length; i++) {

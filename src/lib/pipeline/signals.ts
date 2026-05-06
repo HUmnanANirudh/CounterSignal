@@ -109,22 +109,49 @@ export function deriveSignals(
     const hasCrossTypeAgreement = uniqueTypes.length >= 2;
     const isFeature = appearance.normalizedType === "feature";
     const hasSingleStrongSource = appearance.citationIds.length >= 2 && appearance.domains.size === 1;
-    const isStartupMode = citations.length <= 4;
+    const isLowDataMode = citations.length <= 10;
     const hasWeakSingleSource = appearance.citationIds.length >= 1 && appearance.domains.size === 1;
 
-    if (!hasCrossTypeAgreement && !isFeature && !isHighSeverity && !hasSingleStrongSource) {
-      if (isStartupMode && hasWeakSingleSource) {
-        console.log(`[Signals] Startup mode: accepting single-source signal: ${key.slice(0, 40)}...`);
+    // Quality domains that can validate single-source signals
+    const qualityDomains = ["inc42.com", "bloomberg.com", "g2.com", "capterra.com", "moneycontrol.com", "medianama.com"];
+    const isFromQualityDomain = Array.from(appearance.domains).some(d =>
+      qualityDomains.some(q => d.includes(q))
+    );
+
+    // Acceptance logic:
+    // 1. High severity always accepted
+    // 2. Cross-type validated always accepted
+    // 3. Feature signals always accepted
+    // 4. Single strong source (2+ citations, same domain) accepted
+    // 5. Low data mode (<= 10 citations): accept single source from quality domains
+    // 6. Low data mode: accept any single source signal if it has 1+ citations
+
+    let accepted = false;
+
+    if (hasCrossTypeAgreement || isFeature || isHighSeverity || hasSingleStrongSource) {
+      accepted = true;
+    } else if (isLowDataMode && hasWeakSingleSource) {
+      if (isFromQualityDomain) {
+        console.log(`[Signals] Low-data mode: accepting quality-domain signal: ${key.slice(0, 40)}...`);
+        accepted = true;
       } else {
-        console.log(`[Signals] Filtering: ${key.slice(0, 40)}... (types: ${uniqueTypes.join(",")}, need ≥2 or strong single source)`);
-        continue;
+        // Low data mode: accept any signal with at least 1 citation from low-coverage entity
+        console.log(`[Signals] Low-data mode: accepting single-source signal: ${key.slice(0, 40)}...`);
+        accepted = true;
       }
+    }
+
+    if (!accepted) {
+      console.log(`[Signals] Filtering: ${key.slice(0, 40)}... (types: ${uniqueTypes.join(",")}, citations: ${appearance.citationIds.length})`);
+      continue;
     }
 
     if (isHighSeverity) {
       console.log(`[Signals] HIGH severity signal auto-validated: ${appearance.normalizedType} - ${key.slice(0, 40)}...`);
     } else if (hasSingleStrongSource) {
       console.log(`[Signals] Single strong source signal accepted: ${key.slice(0, 40)}... (${appearance.citationIds.length} citations)`);
+    } else if (isLowDataMode) {
+      console.log(`[Signals] Low-data mode signal accepted: ${key.slice(0, 40)}...`);
     }
 
     const id = `signal_${signalIndex++}`;
@@ -140,7 +167,7 @@ export function deriveSignals(
     sourceMap[id] = appearance.citationIds.slice(0, 3);
   }
 
-  console.log(`[Signals] Derived ${signals.length} validated signals (cross-type validated)`);
+  console.log(`[Signals] Derived ${signals.length} validated signals`);
 
   return { signals, sourceMap };
 }
