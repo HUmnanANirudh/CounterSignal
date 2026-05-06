@@ -163,7 +163,7 @@ CRITICAL RULES - VIOLATION = REJECTED OUTPUT:
 7. CUSTOMER TRUTHS MUST INCLUDE: Include any fraud incidents, regulatory issues, financial instability signals as keyComplaints. Example: "₹40Cr fraud incident" should appear in keyComplaints, not just negatives.
 8. REVIEW SENTIMENT INTERPRETATION: 3-3.9 stars = "moderate/mixed sentiment" NOT "high satisfaction". 4+ stars = "positive sentiment". Below 3 = "negative sentiment". Do not overstate satisfaction.
 9. CUSTOMER TRUTHS MUST BE BUYER-OPERATIONAL TRUTHS, not generic review adjectives (like "Support" or "Ease of integration"). Example Strengths: "Simplifies global tax compliance", "Faster SaaS monetization launch". Example Weaknesses: "Merchant custody dependency", "Less checkout/payment ownership".
-10. STRATEGIC OVERLAP: Compare the competitor's capabilities with Blostem's. Blostem provides "BFSI infrastructure layer (FD/RD/banking products)". Output format for overlap: "payment acceptance -> yes", "FD/RD infra -> no", "merchant custody -> yes", "compliance abstraction -> partial".
+10. STRATEGIC OVERLAP: Compare the competitor's capabilities with Blostem's. Blostem provides "banking-product infrastructure layer". Output format for overlap: "payments -> native", "bfsi_infra -> none", "custody -> native", "compliance_layer -> partial".
 11. VARS ACKNOWLEDGE (Operational Implication): Transform their features into an executive-level operational implication. Example: Instead of "- Integrated fraud protection, - Tax compliance", write "Handles operational complexity around global SaaS payments and compliance".
 
 Data:
@@ -175,7 +175,7 @@ Reviews: ${reviewInfo}
 Negative signals (fraud/regulatory/financial): ${negativeSignalsInfo}
 
 JSON (only one model, one entryPrice):
-{"positioning":{"tagline":"string","targetSegments":[],"differentiators":[]},"pricing_posture":{"model":"subscription|transaction|transaction+MDR|transaction+volume-linked|freemium|custom|unknown","entryPrice":"string","tiers":[],"opacity":"clear|opaque"},"recent_moves":[],"customer_truths":{"positives":[],"negatives":[],"keyComplaints":[]},"strategic_overlap":{"payments":"yes|no|partial","bfsi_infra":"yes|no|partial","custody":"yes|no|partial","compliance_layer":"yes|no|partial","lending_stack":"yes|no|partial"},"decision_orientation":{"compete_aggressively_when":[],"do_not_compete_when":[],"why_this_appears_in_deals":[]},"VARS":{"validate":"string","acknowledge":"string"}}
+{"positioning":{"tagline":"string","targetSegments":[],"differentiators":[]},"pricing_posture":{"model":"subscription|transaction|transaction+MDR|transaction+volume-linked|freemium|custom|unknown","entryPrice":"string","tiers":[],"opacity":"clear|opaque"},"recent_moves":[],"customer_truths":{"positives":[],"negatives":[],"keyComplaints":[]},"strategic_overlap":{"payments":"native|partnered|partial|none","bfsi_infra":"native|partnered|partial|none","custody":"native|partnered|partial|none","compliance_layer":"native|partnered|partial|none","lending_stack":"native|partnered|partial|none"},"decision_orientation":{"compete_aggressively_when":[],"do_not_compete_when":[],"why_this_appears_in_deals":[]},"VARS":{"validate":"string","acknowledge":"string"}}
 
 Return ONLY the JSON object. No markdown, no explanation.`;
   for (let attempt = 0; attempt <= EXTRACTION_MAX_RETRIES; attempt++) {

@@ -181,7 +181,9 @@ export function buildSearchQueries(competitor: string): string[] {
     // Reviews (customer truths)
     `site:g2.com OR site:capterra.com "${competitor}" review`,
     // Startup news (signal sources) - anchored
-    `site:inc42.com OR site:medianama.com "${competitor}"`,
+    `site:inc42.com OR site:entrackr.com OR site:yourstory.com "${competitor}"`,
+    // Deep fintech coverage - anchored
+    `site:medianama.com OR site:the-ken.com "${competitor}"`,
     // Financial news - anchored
     `site:moneycontrol.com OR site:bloomberg.com "${competitor}" fintech`,
   ];

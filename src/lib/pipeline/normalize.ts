@@ -11,9 +11,12 @@ export async function normalizeSignals(rawSignals: Omit<Signal, 'summary' | 'evi
   console.log(`[Normalize] Normalizing ${rawSignals.length} signals via LLM...`);
 
   const preFiltered = rawSignals.filter(s => {
-    if (s.value.length < 15) return false;
+    if (!s.value || s.value.length < 20) return false;
     if (s.value.includes("http://") || s.value.includes("https://")) return false;
-    if (/^[\d\s\.,$]+$/.test(s.value)) return false;
+    if (s.value.startsWith("[") && s.value.includes("]")) return false; // Markdown links/refs
+    if (/cookie|privacy policy|terms of service|copyright|all rights reserved/i.test(s.value)) return false;
+    if (s.value.split(/\s+/).length < 5) return false; // Too short
+    if (/^[\d\s\.,$%]+$/.test(s.value)) return false; // Just numbers/symbols
     return true;
   });
 
@@ -75,11 +78,17 @@ ${preFiltered.map((s, i) => `[${i}] TYPE: ${s.type} | RAW: ${s.value}`).join("\n
 
   } catch (err) {
     console.error(`[Normalize] LLM normalization failed, falling back to heuristic:`, err);
-    // Fallback: heuristic truncation
-    return preFiltered.map(s => ({
-      ...s,
-      summary: s.value.slice(0, 80).replace(/\s+/g, " ").trim() + "...",
-      evidence: s.value.replace(/\s+/g, " ").trim(),
-    }));
+    // Fallback: heuristic sentence-aware truncation
+    return preFiltered.map(s => {
+      const clean = s.value.replace(/\s+/g, " ").trim();
+      // Try to find first sentence
+      const firstSentence = clean.split(/[.!?]\s/)[0];
+      const summary = firstSentence.length > 80 ? firstSentence.slice(0, 77) + "..." : firstSentence;
+      return {
+        ...s,
+        summary: summary,
+        evidence: clean,
+      };
+    });
   }
 }

@@ -30,14 +30,15 @@ export function normalizeQuery(query: string): { normalized: string; aliases: st
 export function computeEntityConfidence(query: string): number {
   const { normalized, aliases } = normalizeQuery(query);
 
-  // Simple scoring: shorter queries = higher confidence for exact match
-  // Longer queries = more ambiguous
+  // Scoring model: recognize BFSI authority terms
+  const hasAuthorityTerm = /\b(bank|corporation|national|payment|settlement|reserve|insurance|ltd|limited|holdings)\b/i.test(query);
+  
   if (normalized.length <= 5) {
-    return 0.9; // Short name, high confidence if matched
-  } else if (normalized.length <= 10) {
-    return 0.7; // Medium name
+    return 0.9; 
+  } else if (normalized.length <= 15 || hasAuthorityTerm) {
+    return 0.8; 
   } else {
-    return 0.5; // Long name, more uncertain
+    return 0.6;
   }
 }
 

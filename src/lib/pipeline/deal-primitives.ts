@@ -1,5 +1,6 @@
 import type { Citation, ExtractedIntelligence, Signal, AE_BATTLECARD } from "@/types";
 import { classifySignalType } from "./utils/signal-classify";
+import { CATEGORY_DEFINITIONS, type BFSICategory } from "@/types/entity";
 
 function isActualCustomerComplaint(signal: Signal): boolean {
   const complaintTypes = ["pricing_complaint", "support_issue", "integration_issue", "onboarding_delay", "quality_issue", "reliability"];
@@ -8,34 +9,40 @@ function isActualCustomerComplaint(signal: Signal): boolean {
 function deriveObjectionFromSignal(signal: Signal): string {
   const signalType = signal.type && signal.type !== "general" ? signal.type : classifySignalType(signal.value, signal.normalizedType);
   switch (signalType) {
-    case "regulatory": return "How do they handle compliance risk?";
-    case "trust_risk": return "How do they isolate fraud liability?";
-    case "financial_health": return "Are they financially stable enough for a long-term partnership?";
-    case "pricing_complaint": return "What happens to costs at scale?";
-    case "reliability": return "How reliable is their API infrastructure?";
-    case "support_issue": return "How responsive is their technical support?";
-    case "integration_issue": return "How complex is integration across banks?";
-    case "onboarding_delay": return "How long does it take to go live?";
-    default: return "How do they compare on infrastructure capabilities?";
+    case "regulatory": return "How does their regulatory history impact your compliance burden?";
+    case "trust_risk": return "How do they isolate merchant liability in embedded flows?";
+    case "financial_health": return "Are they stable enough for a multi-year infrastructure dependency?";
+    case "pricing_complaint": return "How do your margins scale as their transaction MDR compounds?";
+    case "reliability": return "How does their abstraction layer handle settlement failover?";
+    case "support_issue": return "How do you escalate critical banking issues without direct bank access?";
+    case "integration_issue": return "How complex is managing their fragmented point-to-point integrations?";
+    case "onboarding_delay": return "What is the real activation timeline for regulated products?";
+    default: return "How does their product architecture align with your infrastructure ownership?";
   }
 }
 
-function deriveCounterFromSignal(signal: Signal, competitor: string, citationIds: string[], citationsMap: Map<string, string>): string {
-  const url = citationIds[0] ? citationsMap.get(citationIds[0]) : "";
-  const citationRef = citationIds[0] && url ? ` [${citationIds[0]}](${url})` : citationIds[0] ? ` [${citationIds[0]}]` : "";
+function deriveCounterFromSignal(signal: Signal, competitor: string): string {
   const signalType = signal.type && signal.type !== "general" ? signal.type : classifySignalType(signal.value, signal.normalizedType);
   const summary = signal.summary || signal.value.slice(0, 60);
 
   switch (signalType) {
-    case "regulatory": return `${competitor}'s regulatory history creates compliance risk your team inherits${citationRef}`;
-    case "financial_health": return `${competitor}'s financial performance signals uneven product traction${citationRef}`;
-    case "trust_risk": return `${competitor}'s fraud incidents expose partners to liability${citationRef}`;
-    case "reliability": return `${competitor}'s service disruptions create settlement risk${citationRef}`;
-    case "pricing_complaint": return `${competitor}'s pricing opacity creates hidden costs at scale${citationRef}`;
-    case "support_issue": return `${competitor}'s support issues escalate for BFSI compliance needs${citationRef}`;
-    case "integration_issue": return `${competitor}'s integration complexity compounds with each bank partnership${citationRef}`;
-    case "onboarding_delay": return `${competitor}'s BFSI onboarding timelines add weeks to your launch${citationRef}`;
-    default: return `${summary}... recommend validation${citationRef}`;
+    case "regulatory": return `${competitor}'s regulatory incidents create inherited compliance risk that could block your product launches`;
+    case "financial_health": return `Aggressive cash-burn or financial volatility signals potential platform instability; recommend verifying infrastructure isolation`;
+    case "trust_risk": return `${competitor}'s fraud/trust signals indicate gaps in liability isolation—Blostem keeps you closer to the banking rail`;
+    case "reliability": return `${competitor}'s abstraction adds points of failure; Blostem provides direct, multi-bank failover for deposits`;
+    case "pricing_complaint": return `${competitor}'s MDR-based pricing means your margins erode as you scale; Blostem offers transparent infra-only pricing`;
+    case "support_issue": return `${competitor} support treats you as a merchant; Blostem provides direct BFSI infra-level technical support`;
+    case "integration_issue": return `${competitor} requires managing multiple brittle point-to-point flows; Blostem unifies these into a single API`;
+    case "onboarding_delay": return `${competitor}'s activation timelines add significant GTM risk for regulated banking products`;
+    default: {
+      if (summary.toLowerCase().includes("valuation") || summary.toLowerCase().includes("funding") || summary.toLowerCase().includes("million") || summary.toLowerCase().includes("billion")) {
+        return `Rapid capital expansion can lead to product sprawl and increased operational complexity for your engineering team.`;
+      }
+      if (summary.toLowerCase().includes("acquisition") || summary.toLowerCase().includes("merger")) {
+        return `Platform consolidation often results in support migration delays and legacy API deprecation risks.`;
+      }
+      return `${summary}`;
+    }
   }
 }
 
@@ -58,13 +65,13 @@ function deriveWinFromSignal(signal: Signal, competitor: string): string | null 
   const signalType = signal.type && signal.type !== "general" ? signal.type : classifySignalType(signal.value, signal.normalizedType);
   
   switch (signalType) {
-    case "pricing_complaint": return `${competitor} uses bundled pricing models. Blostem offers transparent infra pricing so your margins don't erode at scale.`;
-    case "support_issue": return `${competitor} support treats you like a merchant. Blostem provides direct developer-to-developer infrastructure support.`;
-    case "integration_issue": return `${competitor} limits your control of the payment flow. Blostem's single API gives you direct ownership of multi-bank complexity.`;
-    case "onboarding_delay": return `${competitor}'s rigid underwriting delays activation. Blostem standardizes BFSI onboarding while letting you own the customer.`;
-    case "reliability": return `${competitor}'s abstraction adds points of failure. Blostem provides direct, SLA-backed reliability.`;
-    case "regulatory": return `${competitor} creates inherited compliance risk. Blostem is built on native, compliant banking rails.`;
-    case "trust_risk": return `${competitor} uses a merchant custody model. This means less ownership/control. Blostem avoids custody abstraction so you retain control.`;
+    case "pricing_complaint": return `${competitor} bundles pricing across payments and services. Blostem offers pure-play infra pricing so your margins stay predictable at scale.`;
+    case "support_issue": return `${competitor} support is merchant-facing. Blostem provides direct developer-level access for BFSI infrastructure reliability.`;
+    case "integration_issue": return `${competitor} forces you into their specific product abstraction. Blostem gives you a unified API for multi-bank ownership.`;
+    case "onboarding_delay": return `${competitor}'s rigid underwriting creates activation bottlenecks. Blostem standardizes BFSI onboarding to speed up GTM.`;
+    case "reliability": return `${competitor} adds middleware complexity. Blostem provides direct, SLA-backed banking product rails.`;
+    case "regulatory": return `${competitor} increases inherited risk via bundled compliance. Blostem sits on native, compliant banking rails.`;
+    case "trust_risk": return `${competitor} uses a merchant custody model, limiting your control. Blostem avoids custody abstraction so you retain ownership.`;
     default: return null;
   }
 }
@@ -90,15 +97,6 @@ export function deriveDealPrimitives(
     const positives = intelligence.customer_truths?.positives || [];
     const differentiators = intelligence.positioning?.differentiators || [];
 
-    const layerDescriptions: Record<string, string> = {
-      wallet: "wallet/payment layer",
-      gateway: "payment gateway / payment orchestration layer",
-      merchant_of_record: "merchant of record / payment compliance layer",
-      infra: "integration layer",
-      NBFC: "lending/NBFC layer",
-      unknown: "BFSI solution",
-    };
-
     // Build minimal landmines from category
     const merchantOfRecordLandmines = [
       "How do you handle tax compliance across multiple states?",
@@ -112,10 +110,11 @@ export function deriveDealPrimitives(
       "Blostem provides infra-layer abstraction without MoR custody risk.",
     ];
 
+    const contrastDesc = CATEGORY_DEFINITIONS[compType as BFSICategory] || "BFSI technology layer";
     return {
       company_overview,
       competitor_type: compType,
-      category_contrast: `${competitor} = ${layerDescriptions[compType] || "BFSI solution"}; Blostem = BFSI infrastructure layer (FD/RD/banking products)`,
+      category_contrast: `${competitor} = ${contrastDesc}; Blostem = banking-product infrastructure layer`,
       quick_dismisses: [],
       objection_handling: [
         {
@@ -166,7 +165,7 @@ export function deriveDealPrimitives(
     const objection = `We already use ${competitor}`;
     objection_handling.push({
       objection,
-      counter: deriveCounterFromSignal(firstComplaint, competitor, firstComplaint.citationIds, citationsMap),
+      counter: deriveCounterFromSignal(firstComplaint, competitor),
       evidence: firstComplaint.citationIds.slice(0, 2),
     });
     seenObjections.add(objection.toLowerCase());
@@ -178,7 +177,7 @@ export function deriveDealPrimitives(
     const normalizedObjection = objectionText.toLowerCase();
     if (seenObjections.has(normalizedObjection)) continue;
     seenObjections.add(normalizedObjection);
-    const counter = deriveCounterFromSignal(signal, competitor, signal.citationIds, citationsMap);
+    const counter = deriveCounterFromSignal(signal, competitor);
     if (counter.includes("recommend direct research") && !signal.citationIds.length) continue;
     objection_handling.push({ objection: objectionText, counter, evidence: signal.citationIds.slice(0, 2) });
   }
@@ -259,14 +258,8 @@ export function deriveDealPrimitives(
     ? tagline.split(".").slice(0, 2).join(".").trim()
     : `${competitor} — direct research recommended for accurate positioning.`;
 
-  const layerDescriptions: Record<string, string> = {
-    wallet: "wallet/payment layer",
-    gateway: "payment gateway / payment orchestration layer",
-    infra: "integration layer",
-    NBFC: "lending/NBFC layer",
-    unknown: "BFSI solution",
-  };
-  const category_contrast = `${competitor} = ${layerDescriptions[compType] || "BFSI solution"}; Blostem = BFSI infrastructure layer (FD/RD/banking products)`;
+  const contrastDesc = CATEGORY_DEFINITIONS[compType as BFSICategory] || "BFSI technology layer";
+  const category_contrast = `${competitor} = ${contrastDesc}; Blostem = banking-product infrastructure layer`;
 
   const compete_aggressively_when: string[] = [];
   const signalTypes = signals.map(s => classifySignalType(s.value, s.normalizedType));

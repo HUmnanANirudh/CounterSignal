@@ -5,99 +5,96 @@ const MAX_TOTAL_LINES = 1200;
 const MAX_WORDS_PER_DISMISS = 12;
 
 // Text sanitization - AE-ready language (strict)
-function sanitize(text: string | undefined | null, maxLen = 250): string {
+function sanitize(text: string | undefined | null, maxLen = 300): string {
   if (!text) return "";
 
   let cleaned = text
     // Remove ALL markdown headings (## anywhere, not just start of line)
     .replace(/##+\s*[^\n]*/g, "")
-    // Remove URLs completely
-    .replace(/https?:\/\/[^\s]+/g, "")
-    // Remove incomplete sentences
-    .replace(/\.\.\.$/g, "")
-    .replace(/\s+\.\s+/g, ". ")
-    // Fix broken sentence fragments
-    .replace(/\b(has|have|had)\.\s+(for|with|when|then)\b/gi, ". ")
+    // Remove internal pipeline terminology with boundary checks to avoid partial matches
+    .replace(/\brecommend validation\b/gi, "verify operational impact")
+    .replace(/\brecommend direct research\b/gi, "further analysis advised")
+    .replace(/\baccording to extracted data\b/gi, "")
+    .replace(/\bbased on provided sources\b/gi, "")
+    .replace(/\bnormalized signal\b/gi, "")
+    .replace(/\bvalidated signal\b/gi, "")
+    .replace(/\binternal pipeline\b/gi, "")
+    .replace(/\bsignal trace\b/gi, "")
+    .replace(/\(scored:[^)]+\)/gi, "")
+    // Fix spacing and newlines
+    .replace(/[\n\r]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-  // Truncate at sentence boundary or safely
-  if (cleaned.length > maxLen) {
-    const lastSentence = cleaned.slice(0, maxLen).lastIndexOf(".");
-    const lastParen = cleaned.slice(0, maxLen).lastIndexOf(")");
-    if (lastSentence > maxLen * 0.6) {
-      cleaned = cleaned.slice(0, lastSentence + 1);
-    } else if (lastParen > maxLen * 0.8) {
-      cleaned = cleaned.slice(0, lastParen + 1);
-    } else {
-      // Avoid cutting in the middle of a word
-      const lastSpace = cleaned.slice(0, maxLen).lastIndexOf(" ");
-      cleaned = cleaned.slice(0, lastSpace > 0 ? lastSpace : maxLen);
-    }
+  // Sentence-aware Truncation
+  if (cleaned.length <= maxLen) return cleaned;
+  
+  const truncated = cleaned.slice(0, maxLen);
+  const lastFullStop = truncated.lastIndexOf(".");
+  if (lastFullStop > maxLen * 0.7) {
+    return truncated.slice(0, lastFullStop + 1);
   }
-
-  // Final cleanup
-  return cleaned
-    .replace(/[""]/g, '"')
-    .replace(/'/g, "'")
-    .replace(/\|/g, "\\|");
+  
+  // Avoid cutting in the middle of a word
+  const lastSpace = truncated.lastIndexOf(" ");
+  return (lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated).trim() + "...";
 }
 
 // Ensure complete sentence
 function complete(text: string): string {
   if (!text) return "";
   const trimmed = text.trim();
-  if (!/[.!?]$/.test(trimmed)) {
-    return trimmed + ".";
-  }
-  return trimmed;
+  if (trimmed.endsWith(".") || trimmed.endsWith("?") || trimmed.endsWith("!")) return trimmed;
+  return trimmed + ".";
 }
 
-// Word count check for dismiss lines
-function isValidDismiss(line: string): boolean {
-  const words = line.trim().split(/\s+/).length;
-  const hasCitation = /\[\w+\]/.test(line);
-  const hasQuestion = /[?]$/.test(line.trim());
-  return words <= MAX_WORDS_PER_DISMISS && !hasCitation && !hasQuestion;
-}
-
-// Truncate dismiss to max words
-function truncateToDismiss(text: string): string {
-  const words = text.split(/\s+/);
-  if (words.length <= MAX_WORDS_PER_DISMISS) {
-    return complete(text);
-  }
-  return complete(words.slice(0, MAX_WORDS_PER_DISMISS).join(" "));
-}
-
-// Deduplicate objections by semantic intent
-function deduplicateObjections<T extends { objection: string }>(items: T[]): T[] {
+// Semantic deduplication to prevent repetitive bullet points
+export function deduplicatePhrases(phrases: string[]): string[] {
   const seen = new Set<string>();
-  return items.filter(item => {
-    const intent = item.objection.toLowerCase().replace(/[""']/g, "").trim();
-    if (seen.has(intent)) return false;
-    seen.add(intent);
-    return true;
+  return phrases.filter(p => {
+    if (!p) return false;
+    const norm = p.toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 30); // Use first 30 chars as semantic key
+    if (seen.has(norm)) return false;
+    seen.add(norm);
+    return p.length > 10;
   });
 }
 
-// Semantic diversity enforcement (Anti-genericity)
-function deduplicatePhrases(items: string[]): string[] {
+function isValidDismiss(text: string): boolean {
+  if (!text) return false;
+  // No questions in quick dismiss
+  if (text.includes("?")) return false;
+  // Limit words
+  const words = text.split(/\s+/);
+  return words.length <= MAX_WORDS_PER_DISMISS && words.length >= 3;
+}
+
+function truncateToDismiss(text: string): string {
+  const words = text.split(/\s+/);
+  if (words.length <= MAX_WORDS_PER_DISMISS) return text;
+  return words.slice(0, MAX_WORDS_PER_DISMISS).join(" ") + ".";
+}
+
+function deduplicateObjections(objections: any[]): any[] {
   const seen = new Set<string>();
-  return items.filter(item => {
-    const normalized = item.toLowerCase().trim().replace(/[^\w\s]/g, "");
-    if (!normalized || seen.has(normalized)) return false;
-    seen.add(normalized);
+  return objections.filter(o => {
+    const norm = o.objection.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (seen.has(norm)) return false;
+    seen.add(norm);
     return true;
   });
 }
 
 export function renderMarkdown(battlecard: Battlecard): string {
   const { competitor, AE_BATTLECARD, citations, confidence } = battlecard;
-
-  // Confidence cap based on signal count (≤4 signals → cap at 0.85)
-  const signalCount = battlecard.signals?.length || 0;
+  
+  // Dynamic confidence threshold for section suppression
+  const signalCount = battlecard.citations?.length || 0;
   let effectiveConfidence = confidence.score;
+  
+  // Penalty for low data volume
   if (signalCount <= 4) {
     effectiveConfidence = Math.min(confidence.score, 0.85);
   }
@@ -108,42 +105,42 @@ export function renderMarkdown(battlecard: Battlecard): string {
     if (lines.length > 0) add(""); 
     add(`## ${title}`); 
   };
-  const addBullet = (text: string, maxLen = 120) => add(`- ${complete(sanitize(text, maxLen))}`);
+  const addBullet = (text: string, maxLen = 150) => add(`- ${complete(sanitize(text, maxLen))}`);
 
   // Header
   add(`# ${competitor} Battlecard`);
   add(`**${AE_BATTLECARD.competitor_type?.toUpperCase() || 'BFSI'}** | Confidence: ${Math.round(effectiveConfidence * 100)}% | ${new Date(battlecard.generatedAt).toLocaleString()}`);
   add(`---`);
 
-  // Company Overview (1 line)
+  // Company Overview
   if (AE_BATTLECARD.company_overview) {
     addSection("Company Overview");
-    add(complete(sanitize(AE_BATTLECARD.company_overview, 150)));
+    add(complete(sanitize(AE_BATTLECARD.company_overview, 300)));
   }
 
-  // Category Contrast (1 line)
+  // Category Contrast
   if (AE_BATTLECARD.category_contrast) {
     addSection("Category Contrast");
-    add(`**${sanitize(AE_BATTLECARD.category_contrast, 120)}**`);
+    add(`**${sanitize(AE_BATTLECARD.category_contrast, 200)}**`);
   }
 
   // Positioning (compact)
   if (battlecard.positioning) {
     addSection("Positioning");
     if (battlecard.positioning.tagline) {
-      add(`**Tagline:** ${sanitize(battlecard.positioning.tagline, 100)}`);
+      add(`**Tagline:** ${sanitize(battlecard.positioning.tagline, 150)}`);
     }
     if (battlecard.positioning.targetSegments?.length) {
-      add(`**Segments:** ${battlecard.positioning.targetSegments.slice(0, 2).map(s => sanitize(s, 40)).join(", ")}`);
+      add(`**Segments:** ${battlecard.positioning.targetSegments.slice(0, 3).map(s => sanitize(s, 60)).join(", ")}`);
     }
     if (battlecard.positioning.differentiators?.length) {
-      for (const diff of deduplicatePhrases(battlecard.positioning.differentiators).slice(0, 2)) {
-        addBullet(diff, 80);
+      for (const diff of deduplicatePhrases(battlecard.positioning.differentiators).slice(0, 3)) {
+        addBullet(diff, 120);
       }
     }
   }
 
-  // Quick Dismisses: max 2, ≤12 words, no citations, no questions
+  // Quick Dismisses
   if (AE_BATTLECARD.quick_dismisses?.length) {
     addSection("Quick Dismisses");
     const validDismisses = AE_BATTLECARD.quick_dismisses
@@ -152,47 +149,46 @@ export function renderMarkdown(battlecard: Battlecard): string {
     for (const dismiss of validDismisses) {
       add(truncateToDismiss(dismiss));
     }
-    // Fallback if no valid dismisses
     if (validDismisses.length === 0 && AE_BATTLECARD.quick_dismisses.length > 0) {
       add(truncateToDismiss(AE_BATTLECARD.quick_dismisses[0]));
     }
   }
 
-  // Objection Handling: deduplicated, max 3
+  // Objection Handling
   if (AE_BATTLECARD.objection_handling?.length) {
     addSection("Objection Handling");
     const deduped = deduplicateObjections(AE_BATTLECARD.objection_handling).slice(0, 3);
     for (const obj of deduped) {
-      add(`**"${sanitize(obj.objection, 50)}"**`);
-      add(`Counter: ${complete(sanitize(obj.counter, 180))}`);
+      add(`**"${sanitize(obj.objection, 80)}"**`);
+      add(`Counter: ${complete(sanitize(obj.counter, 300))}`);
       if (obj.evidence?.length) {
-        const evidenceLinks = obj.evidence.map(e => {
+        const evidenceLinks = obj.evidence.map((e: string) => {
           const cit = battlecard.citations?.find(c => c.id === e);
           return cit && cit.url ? `[${e}](${cit.url})` : `[${e}]`;
         });
         add(`Evidence: ${evidenceLinks.join(", ")}`);
       }
-      add(""); // blank line between objections
+      add(""); 
     }
   }
 
-  // Why We Win (max 3)
+  // Why We Win
   if (AE_BATTLECARD.why_we_win?.length) {
     addSection("Why We Win");
     for (const win of deduplicatePhrases(AE_BATTLECARD.why_we_win).slice(0, 3)) {
-      addBullet(win, 100);
+      addBullet(win, 150);
     }
   }
 
-  // Why We Lose (max 2)
+  // Why We Lose
   if (AE_BATTLECARD.why_we_lose?.length) {
     addSection("Why We Lose");
     for (const lose of deduplicatePhrases(AE_BATTLECARD.why_we_lose).slice(0, 2)) {
-      addBullet(lose, 100);
+      addBullet(lose, 150);
     }
   }
 
-  // Pricing (only show if clear/public to reduce noise)
+  // Pricing
   if (battlecard.pricing_posture && battlecard.pricing_posture.opacity === 'clear') {
     addSection("Pricing");
     const model = sanitize(battlecard.pricing_posture.model);
@@ -200,38 +196,38 @@ export function renderMarkdown(battlecard: Battlecard): string {
     add(`Model: ${model} | Entry: ${entry} |  Clear`);
   }
 
-  // Landmines (max 3, clean questions)
+  // Landmines
   if (AE_BATTLECARD.landmines?.length) {
     addSection("Landmines");
     for (const lm of deduplicatePhrases(AE_BATTLECARD.landmines).slice(0, 3)) {
-      addBullet(lm, 120);
+      addBullet(lm, 150);
     }
   }
 
-  // FUD Flip (max 2, clean statements)
+  // FUD Flip
   if (AE_BATTLECARD.FUD_responses?.length) {
     addSection("FUD Flip");
     for (const fud of deduplicatePhrases(AE_BATTLECARD.FUD_responses).slice(0, 2)) {
-      addBullet(fud, 120);
+      addBullet(fud, 250);
     }
   }
 
-  // Proof Points (max 2)
+  // Proof Points
   if (AE_BATTLECARD.proof_points?.length) {
     addSection("Proof Points");
     for (const proof of deduplicatePhrases(AE_BATTLECARD.proof_points).slice(0, 2)) {
-      addBullet(proof, 120);
+      addBullet(proof, 150);
     }
   }
 
-  // Customer Truths (compact)
+  // Customer Truths
   addSection("Customer Truths");
   const truths = battlecard.customer_truths ?? { positives: [], negatives: [], keyComplaints: [] };
   
   if ((truths.keyComplaints ?? []).length > 0) {
     add(`**Key Issues:**`);
-    for (const c of deduplicatePhrases(truths.keyComplaints!).slice(0, 2)) {
-      addBullet(c, 100);
+    for (const c of deduplicatePhrases(truths.keyComplaints!).slice(0, 3)) {
+      addBullet(c, 150);
     }
   } else {
     add(`No strong public complaints detected.`);
@@ -239,8 +235,8 @@ export function renderMarkdown(battlecard: Battlecard): string {
 
   if ((truths.positives ?? []).length > 0) {
     add(`**Strengths:**`);
-    for (const p of deduplicatePhrases(truths.positives!).slice(0, 2)) {
-      addBullet(p, 100);
+    for (const p of deduplicatePhrases(truths.positives!).slice(0, 3)) {
+      addBullet(p, 150);
     }
   }
 
@@ -248,15 +244,25 @@ export function renderMarkdown(battlecard: Battlecard): string {
   if (AE_BATTLECARD.strategic_overlap && Object.keys(AE_BATTLECARD.strategic_overlap).length > 0) {
     addSection("Strategic Overlap Matrix");
     const matrix = AE_BATTLECARD.strategic_overlap;
-    const formatValue = (v: string) => v === 'yes' ? '🟢 Yes' : v === 'partial' ? '🟡 Partial' : '🔴 No';
+    const formatValue = (v: string) => {
+      switch (v) {
+        case 'native': return '🟢 Native';
+        case 'partnered': return '🟡 Partnered';
+        case 'partial': return '🟠 Partial';
+        case 'none': return '🔴 None';
+        default: return '🔴 None';
+      }
+    };
     
     add(`| Capability | Blostem | ${battlecard.competitor} |`);
     add(`| :--- | :--- | :--- |`);
-    add(`| Payments | 🟢 Yes | ${formatValue(matrix.payments || 'no')} |`);
-    add(`| BFSI Infra | 🟢 Yes | ${formatValue(matrix.bfsi_infra || 'no')} |`);
-    add(`| Custody | 🔴 No | ${formatValue(matrix.custody || 'no')} |`);
-    add(`| Compliance | 🟢 Yes | ${formatValue(matrix.compliance_layer || 'no')} |`);
-    add(`| Lending | 🟢 Yes | ${formatValue(matrix.lending_stack || 'no')} |`);
+    add(`| Payments | 🔴 None | ${formatValue(matrix.payments || 'none')} |`);
+    add(`| BFSI Infra | 🟢 Native | ${formatValue(matrix.bfsi_infra || 'none')} |`);
+    add(`| Custody | 🔴 None | ${formatValue(matrix.custody || 'none')} |`);
+    add(`| Compliance | 🟢 Native | ${formatValue(matrix.compliance_layer || 'none')} |`);
+    add(`| Lending | 🟡 Partnered | ${formatValue(matrix.lending_stack || 'none')} |`);
+    add("");
+    add(`**Legend:** 🟢 Native | 🟡 Partnered | 🟠 Partial | 🔴 None`);
     add("");
   }
 
@@ -264,46 +270,46 @@ export function renderMarkdown(battlecard: Battlecard): string {
   addSection("Decision Orientation");
   if ((AE_BATTLECARD.compete_aggressively_when ?? []).length > 0) {
     add(`**Push aggressively when:**`);
-    for (const item of deduplicatePhrases(AE_BATTLECARD.compete_aggressively_when!).slice(0, 3)) {
-      addBullet(item, 120);
+    for (const item of deduplicatePhrases(AE_BATTLECARD.compete_aggressively_when!).slice(0, 4)) {
+      addBullet(item, 150);
     }
   }
   
   if ((AE_BATTLECARD.do_not_compete_when ?? []).length > 0) {
     add(`**Avoid competing when:**`);
-    for (const item of deduplicatePhrases(AE_BATTLECARD.do_not_compete_when!).slice(0, 2)) {
-      addBullet(item, 120);
+    for (const item of deduplicatePhrases(AE_BATTLECARD.do_not_compete_when!).slice(0, 3)) {
+      addBullet(item, 150);
     }
   }
 
   if ((AE_BATTLECARD.why_this_appears_in_deals ?? []).length > 0) {
     add(`**Why this appears in deals:**`);
-    for (const item of deduplicatePhrases(AE_BATTLECARD.why_this_appears_in_deals!).slice(0, 2)) {
-      addBullet(item, 120);
+    for (const item of deduplicatePhrases(AE_BATTLECARD.why_this_appears_in_deals!).slice(0, 3)) {
+      addBullet(item, 150);
     }
   }
 
   // Strategic Relationship
   if (AE_BATTLECARD.strategic_relationship) {
     addSection("Strategic Relationship");
-    add(sanitize(AE_BATTLECARD.strategic_relationship, 200));
+    add(sanitize(AE_BATTLECARD.strategic_relationship, 300));
   }
 
-  // VARS Framework (core differentiator — always show)
+  // VARS Framework
   if (battlecard.VARS_layer) {
     addSection("VARS");
     const v = battlecard.VARS_layer;
-    if (v.validate) add(`**Validate:** ${sanitize(v.validate, 120)}`);
-    if (v.acknowledge) add(`**Acknowledge:** ${sanitize(v.acknowledge, 120)}`);
-    if (v.reframe) add(`**Reframe:** ${sanitize(v.reframe, 120)}`);
-    if (v.specify) add(`**Specify:** ${sanitize(v.specify, 120)}`);
+    if (v.validate) add(`**Validate:** ${sanitize(v.validate, 200)}`);
+    if (v.acknowledge) add(`**Acknowledge:** ${sanitize(v.acknowledge, 200)}`);
+    if (v.reframe) add(`**Reframe:** ${sanitize(v.reframe, 200)}`);
+    if (v.specify) add(`**Specify:** ${sanitize(v.specify, 200)}`);
   }
 
-  // Sources (limited)
+  // Sources
   if (citations?.length) {
     addSection("Sources");
     for (const cit of citations.slice(0, 5)) {
-      add(`[${cit.id}](${cit.url}) ${sanitize(cit.title, 60)} — ${sanitize(cit.source)}`);
+      add(`[${cit.id}](${cit.url}) ${sanitize(cit.title, 80)} — ${sanitize(cit.source)}`);
     }
   }
 

@@ -1,13 +1,13 @@
 import type { Battlecard, VARSLayer } from "@/types/battlecard";
-import { blostemProfile } from "@/lib/blostem-profile";
+import { BLOSTEM_PROFILE } from "@/lib/blostem-profile";
 import { getPricingModelForCategory } from "./classify";
 
 export function buildSupplySideVARSLayer(competitor: string, category: string): VARSLayer {
   return {
-    validate: `${competitor} is a ${category} — part of ${blostemProfile.name}'s product layer, not competition.`,
-    acknowledge: `They offer products that ${blostemProfile.name} can help distribute.`,
-    reframe: blostemProfile.VARS_context.reframe,
-    specify: `${blostemProfile.name} infra can connect to multiple issuers, providing flexibility.`,
+    validate: `${competitor} is a ${category} — part of ${BLOSTEM_PROFILE.name}'s product layer, not competition.`,
+    acknowledge: `They offer products that ${BLOSTEM_PROFILE.name} can help distribute.`,
+    reframe: `Blostem is the payment aggregator for banking products — we handle infra so you can focus on distribution.`,
+    specify: `${BLOSTEM_PROFILE.name} infra can connect to multiple issuers, providing flexibility.`,
   };
 }
 
@@ -63,7 +63,7 @@ export function buildSupplySideBattlecard(
         `Does ${competitor} provide APIs or own the products?`,
       ],
       objection_handling: [],
-      why_we_win: blostemProfile.strengths.slice(0, 2),
+      why_we_win: BLOSTEM_PROFILE.core_capabilities.slice(0, 2),
       why_we_lose: [],
       pricing_positioning: "Partnership model, not competition",
       landmines: [
@@ -72,7 +72,7 @@ export function buildSupplySideBattlecard(
         "How do they handle compliance for distribution?",
       ],
       FUD_responses: [],
-      proof_points: blostemProfile.differentiators.slice(0, 2),
+      proof_points: BLOSTEM_PROFILE.differentiators.slice(0, 2),
       compete_aggressively_when: [],
       signal_trace: [],
     },
@@ -138,7 +138,7 @@ export function buildNonCompetitorBattlecard(
         `Can ${competitor} help you launch your own financial product, or only serve end users?`,
       ],
       FUD_responses: [],
-      proof_points: blostemProfile.differentiators.slice(0, 2),
+      proof_points: BLOSTEM_PROFILE.differentiators.slice(0, 2),
       compete_aggressively_when: [],
       signal_trace: signals.slice(0, 3).map(s => ({ signal: s.value.slice(0, 80), type: s.normalizedType || 'general', weapon: 'Contextual signal' })),
       strategic_relationship: `${competitor} sits above Blostem in the stack — Blostem powers products like ${competitor}, not replaces them.`,
@@ -230,8 +230,8 @@ export function buildInternalProfileBattlecard(competitor: string): Battlecard {
     researchDurationMs: 0,
     positioning: {
       tagline: "Banking infrastructure layer for regulated products (FDs, RDs, credit)",
-      targetSegments: [...blostemProfile.icp],
-      differentiators: [...blostemProfile.differentiators],
+      targetSegments: [...BLOSTEM_PROFILE.market_context.target_segments],
+      differentiators: [...BLOSTEM_PROFILE.differentiators],
     },
     pricing_posture: {
       model: "B2B SaaS (opaque)",
@@ -265,12 +265,12 @@ export function buildInternalProfileBattlecard(competitor: string): Battlecard {
       category_contrast: `${competitor} = BFSI infrastructure layer (your company)`,
       quick_dismisses: [],
       objection_handling: [],
-      why_we_win: [...blostemProfile.strengths],
+      why_we_win: [...BLOSTEM_PROFILE.core_capabilities],
       why_we_lose: [],
       pricing_positioning: "B2B SaaS pricing — transparent costs, no hidden fees, predictable for partners",
       landmines: [],
       FUD_responses: [],
-      proof_points: [...blostemProfile.differentiators],
+      proof_points: [...BLOSTEM_PROFILE.differentiators],
       compete_aggressively_when: [],
       signal_trace: [],
     },
@@ -290,33 +290,31 @@ export function renderInternalProfileMarkdown(competitor: string): string {
   lines.push(`---`);
   lines.push(``);
   lines.push(`## What ${competitor} Does`);
-  lines.push(`${blostemProfile.description}`);
+  lines.push(`${BLOSTEM_PROFILE.description}`);
   lines.push(``);
-  lines.push(`## Product Offerings`);
-  for (const item of blostemProfile.product.offerings) {
+  lines.push(`## Core Capabilities`);
+  for (const item of BLOSTEM_PROFILE.core_capabilities) {
     lines.push(`- ${item}`);
   }
   lines.push(``);
   lines.push(`## Key Differentiators`);
-  for (const item of blostemProfile.differentiators) {
+  for (const item of BLOSTEM_PROFILE.differentiators) {
     lines.push(`- ${item}`);
   }
   lines.push(``);
-  lines.push(`## Target Problems Solved`);
-  for (const item of blostemProfile.target_problems) {
-    lines.push(`- ${item}`);
-  }
+  lines.push(`## Market Positioning`);
+  lines.push(`- **Category:** ${BLOSTEM_PROFILE.market_context.category}`);
+  lines.push(`- **Comparison:** ${BLOSTEM_PROFILE.market_context.comparison}`);
   lines.push(``);
   lines.push(`## Social Proof`);
-  lines.push(`- **Investor:** ${blostemProfile.social_proof.investor}`);
-  lines.push(`- **Integration Partner:** ${blostemProfile.social_proof.integration_partner}`);
-  lines.push(`- **Quote:** "${blostemProfile.social_proof.quote}"`);
+  lines.push(`- **Backing:** ${BLOSTEM_PROFILE.market_context.backing}`);
+  lines.push(`- **Partnership:** Zerodha / Rainmatter`);
   lines.push(``);
   lines.push(`## VARS Positioning`);
-  lines.push(`**Validate:** ${blostemProfile.VARS_context.validate}`);
-  lines.push(`**Acknowledge:** ${blostemProfile.VARS_context.acknowledge}`);
-  lines.push(`**Reframe:** ${blostemProfile.VARS_context.reframe}`);
-  lines.push(`**Specify:** ${blostemProfile.VARS_context.specify}`);
+  lines.push(`**Validate:** Blostem provides standardized infra for regulated banking products.`);
+  lines.push(`**Acknowledge:** Deep integration with multiple banks handles reconciliation and KYC.`);
+  lines.push(`**Reframe:** Banking products deserve the same unified rails as payments.`);
+  lines.push(`**Specify:** Single API access to FD/RD booking and servicing.`);
   lines.push(``);
   lines.push(`---`);
   lines.push(`*This is Blostem's internal profile — use for reference, not competitive intelligence.*`);
@@ -325,5 +323,6 @@ export function renderInternalProfileMarkdown(competitor: string): string {
 }
 
 export function isInternalCompany(competitor: string): boolean {
-  return competitor.toLowerCase() === "blostem";
+  const lower = competitor.toLowerCase();
+  return lower === "blostem" || lower === "rainmatter";
 }

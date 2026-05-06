@@ -52,7 +52,7 @@ export interface ExtractedIntelligence {
     reframe: string;
     specify: string;
   };
-  strategic_overlap?: Record<string, "yes" | "no" | "partial">;
+  strategic_overlap?: Record<string, "native" | "partnered" | "partial" | "none">;
   decision_orientation?: {
     compete_aggressively_when: string[];
     do_not_compete_when: string[];

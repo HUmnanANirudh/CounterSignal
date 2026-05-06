@@ -75,8 +75,6 @@ const STRIP_PATTERNS = [
   // URL fragments
   /^com\/.*/i,
   /^www\..*/i,
-  // Markdown links
-  /^\[.*?\]\(.*?\)/,
   // Any URL-like content
   /raw_content/i,
   // Markdown headings (## Title)
@@ -169,12 +167,11 @@ export function sanitizeQuickDismisses(dismisses: string[]): string[] {
 
       clean = stripFillers(clean);
 
-      // Truncate to 12 words at a natural boundary
+      // Truncate to 18 words at a natural boundary (relaxed for BFSI)
       const words = clean.split(/\s+/);
-      if (words.length > 12) {
-        // Find the last word that ends a clause (before a dash, comma, or period)
-        let cutPoint = 12;
-        for (let i = Math.min(11, words.length - 1); i >= 8; i--) {
+      if (words.length > 20) {
+        let cutPoint = 18;
+        for (let i = Math.min(17, words.length - 1); i >= 12; i--) {
           if (/[.—,;]$/.test(words[i]) || words[i].endsWith("—")) {
             cutPoint = i + 1;
             break;
@@ -321,8 +318,8 @@ export function sanitizeForAE(battlecard: AE_BATTLECARD): AE_BATTLECARD {
     proof_points: sanitizeArray(battlecard.proof_points || [], 3),
     compete_aggressively_when: sanitizeArray(battlecard.compete_aggressively_when || [], MAX_BULLETS),
 
-    // Signal trace: INTERNAL ONLY — stripped from AE output
-    signal_trace: [],
+    // Signal trace: Pass through for render-layer decision
+    signal_trace: battlecard.signal_trace || [],
 
     // Category contrast: clean
     category_contrast: stripFillers(sanitizeText(battlecard.category_contrast || "")),

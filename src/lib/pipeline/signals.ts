@@ -288,13 +288,21 @@ export function calculateConfidence(
   }
 
   // New multi-factor Model
-  const score = (
+  let score = (
     (entityConfidence * 0.25) +
     (classificationConfidence * 0.25) +
     (extractionQuality * 0.20) +
     (signalQuality * 0.20) +
     (strategyFit * 0.10)
   ) - completenessPenalty;
+
+  // Signal Volume Penalty (Hard Truth)
+  // If we have < 10 signals, we can't be > 70% confident
+  if (signals.length < 5) {
+    score = Math.min(score, 0.5);
+  } else if (signals.length < 10) {
+    score = Math.min(score, 0.7);
+  }
 
   const finalScore = Math.max(0.05, Math.min(0.98, score));
 

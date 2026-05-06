@@ -70,7 +70,7 @@ export interface AE_BATTLECARD {
   proof_points: string[];
   compete_aggressively_when: string[];
   signal_trace: SignalTrace[];
-  strategic_overlap?: Record<string, "yes" | "no" | "partial">;
+  strategic_overlap?: Record<string, "native" | "partnered" | "partial" | "none">;
   strategic_relationship?: string;
   why_this_appears_in_deals?: string[];
   do_not_compete_when?: string[];
