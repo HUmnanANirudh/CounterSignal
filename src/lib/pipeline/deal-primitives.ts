@@ -20,8 +20,9 @@ function deriveObjectionFromSignal(signal: Signal): string {
   }
 }
 
-function deriveCounterFromSignal(signal: Signal, competitor: string, citationIds: string[]): string {
-  const citationRef = citationIds[0] ? ` [${citationIds[0]}]` : "";
+function deriveCounterFromSignal(signal: Signal, competitor: string, citationIds: string[], citationsMap: Map<string, string>): string {
+  const url = citationIds[0] ? citationsMap.get(citationIds[0]) : "";
+  const citationRef = citationIds[0] && url ? ` [${citationIds[0]}](${url})` : citationIds[0] ? ` [${citationIds[0]}]` : "";
   const signalType = signal.type && signal.type !== "general" ? signal.type : classifySignalType(signal.value, signal.normalizedType);
   const summary = signal.summary || signal.value.slice(0, 60);
 
@@ -41,30 +42,29 @@ function deriveCounterFromSignal(signal: Signal, competitor: string, citationIds
 function deriveLandmineFromSignal(signal: Signal): string | null {
   const signalType = signal.type && signal.type !== "general" ? signal.type : classifySignalType(signal.value, signal.normalizedType);
   switch (signalType) {
-    case "regulatory": return "How do you handle regulatory exposure at scale?";
-    case "trust_risk": return "Who owns fraud liability in your current stack?";
-    case "financial_health": return "How does your cost scale with transaction volume?";
-    case "pricing_complaint": return "What happens to your effective cost when MDR scales with volume?";
-    case "reliability": return "What SLA-backed recourse do you have during service disruptions?";
-    case "support_issue": return "How do you manage support escalations for critical payment flows?";
-    case "integration_issue": return "How do you manage multi-bank integration complexity today?";
-    case "onboarding_delay": return "How long can your product launch be delayed by onboarding timelines?";
-    default: return "How do you manage multi-bank complexity today?";
+    case "regulatory": return "Who owns the liability if an embedded financial product triggers an RBI investigation?";
+    case "trust_risk": return "Who owns the merchant relationship when disputes occur under the MoR structure?";
+    case "financial_health": return "Can you migrate off their infrastructure without reworking your billing and tax flows?";
+    case "pricing_complaint": return "What happens to your effective margins when their MDR scales with your volume?";
+    case "reliability": return "What SLA-backed recourse do you have during settlement disruptions?";
+    case "support_issue": return "How do you escalate compliance and tax issues without direct platform access?";
+    case "integration_issue": return "Does their abstraction layer prevent you from owning the direct banking pipes?";
+    case "onboarding_delay": return "How long does it take to activate a merchant due to their bundled underwriting?";
+    default: return "How do you manage infrastructure lock-in when using a bundled compliance layer?";
   }
 }
 
 function deriveWinFromSignal(signal: Signal, competitor: string): string | null {
   const signalType = signal.type && signal.type !== "general" ? signal.type : classifySignalType(signal.value, signal.normalizedType);
-  const summary = signal.summary || signal.value.slice(0, 80);
-
+  
   switch (signalType) {
-    case "pricing_complaint": return `${competitor}: ${summary}. Blostem offers transparent infra pricing.`;
-    case "support_issue": return `${competitor}: ${summary}. Blostem provides BFSI-native support.`;
-    case "integration_issue": return `${competitor}: ${summary}. Blostem's single API handles multi-bank complexity.`;
-    case "onboarding_delay": return `${competitor}: ${summary}. Blostem standardizes BFSI onboarding.`;
-    case "reliability": return `${competitor}: ${summary}. Blostem provides SLA-backed reliability.`;
-    case "regulatory": return `${competitor}: ${summary}. Blostem handles compliance natively.`;
-    case "trust_risk": return `${competitor}: ${summary}. Blostem isolates you from fraud liability.`;
+    case "pricing_complaint": return `${competitor} uses bundled pricing models. Blostem offers transparent infra pricing so your margins don't erode at scale.`;
+    case "support_issue": return `${competitor} support treats you like a merchant. Blostem provides direct developer-to-developer infrastructure support.`;
+    case "integration_issue": return `${competitor} limits your control of the payment flow. Blostem's single API gives you direct ownership of multi-bank complexity.`;
+    case "onboarding_delay": return `${competitor}'s rigid underwriting delays activation. Blostem standardizes BFSI onboarding while letting you own the customer.`;
+    case "reliability": return `${competitor}'s abstraction adds points of failure. Blostem provides direct, SLA-backed reliability.`;
+    case "regulatory": return `${competitor} creates inherited compliance risk. Blostem is built on native, compliant banking rails.`;
+    case "trust_risk": return `${competitor} uses a merchant custody model. This means less ownership/control. Blostem avoids custody abstraction so you retain control.`;
     default: return null;
   }
 }
@@ -155,6 +155,8 @@ export function deriveDealPrimitives(
     type: classifySignalType(signal.value, signal.normalizedType),
   }));
 
+  const citationsMap = new Map<string, string>(citations.map(c => [c.id, c.url]));
+
   const objection_handling: AE_BATTLECARD["objection_handling"] = [];
   const seenObjections = new Set<string>();
 
@@ -164,7 +166,7 @@ export function deriveDealPrimitives(
     const objection = `We already use ${competitor}`;
     objection_handling.push({
       objection,
-      counter: deriveCounterFromSignal(firstComplaint, competitor, firstComplaint.citationIds),
+      counter: deriveCounterFromSignal(firstComplaint, competitor, firstComplaint.citationIds, citationsMap),
       evidence: firstComplaint.citationIds.slice(0, 2),
     });
     seenObjections.add(objection.toLowerCase());
@@ -176,7 +178,7 @@ export function deriveDealPrimitives(
     const normalizedObjection = objectionText.toLowerCase();
     if (seenObjections.has(normalizedObjection)) continue;
     seenObjections.add(normalizedObjection);
-    const counter = deriveCounterFromSignal(signal, competitor, signal.citationIds);
+    const counter = deriveCounterFromSignal(signal, competitor, signal.citationIds, citationsMap);
     if (counter.includes("recommend direct research") && !signal.citationIds.length) continue;
     objection_handling.push({ objection: objectionText, counter, evidence: signal.citationIds.slice(0, 2) });
   }
@@ -279,6 +281,7 @@ export function deriveDealPrimitives(
     company_overview,
     competitor_type: compType,
     category_contrast,
+    strategic_overlap: intelligence.strategic_overlap || [],
     quick_dismisses: quick_dismisses.slice(0, 2),
     objection_handling: objection_handling.slice(0, 3),
     why_we_win: why_we_win.slice(0, 3),

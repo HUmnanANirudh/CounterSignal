@@ -46,6 +46,13 @@ export interface ExtractedIntelligence {
     negatives: string[];
     keyComplaints: string[];
   };
+  VARS?: {
+    validate?: string;
+    acknowledge?: string;
+    reframe: string;
+    specify: string;
+  };
+  strategic_overlap?: string[];
   recent_moves?: Array<{ name: string; date: string }>;
 }
 

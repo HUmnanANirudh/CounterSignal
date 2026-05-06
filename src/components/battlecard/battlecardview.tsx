@@ -18,8 +18,9 @@ export function BattleCardView({ competitor, markdown, isLoading }: BattleCardVi
   const [editedHtml, setEditedHtml] = useState("");
 
   const handleExportPdf = useCallback(
-    (currentHtml: string) => {
-      exportHtmlToPdf(currentHtml, {
+    (currentMarkdown: string) => {
+      const htmlToExport = markdownToHtml(currentMarkdown);
+      exportHtmlToPdf(htmlToExport, {
         title: `${competitor} Battlecard`,
         subtitle: `CounterSignal • ${new Date().toLocaleDateString()}`,
         filename: `${competitor.toLowerCase().replace(/\s+/g, "-")}-battlecard.pdf`,
@@ -56,7 +57,6 @@ export function BattleCardView({ competitor, markdown, isLoading }: BattleCardVi
   return (
     <div className="space-y-4">
       <BattlecardEditor
-        html={html}
         onChange={setEditedHtml}
         onExportPdf={handleExportPdf}
         markdown={markdown}

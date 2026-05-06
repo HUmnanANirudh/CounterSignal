@@ -33,12 +33,20 @@ export function normalizeSignal(text: string): NormalizedSignalType {
   return "general";
 }
 
+const NEGATIVE_CONTEXT = /investigation|violation|penalty|fraud allegation|money launder|regulatory action|outage|chargeback issue|breach|fine|lawsuit|class action|scam|freeze|loss|bankrupt|vulnerabilit|exploit|hack/i;
+
 export function classifyNegativeSignal(text: string): NegativeSignalType {
   const lower = text.toLowerCase();
 
-  if (/fraud|scam|₹\s*\d+\s*(?:cr|crore)|money.*launder|security.*breach|sanction.*popup|data.*breach|credential.*leak|class.*action|lawsuit/i.test(lower)) {
+  if (/fraud|security|compliance|data|credential/i.test(lower)) {
+    if (NEGATIVE_CONTEXT.test(lower) || /scam|breach|leak|class.*action|lawsuit/i.test(lower)) {
+      return "trust_risk";
+    }
+  }
+  if (/₹\s*\d+\s*(?:cr|crore)|money.*launder|sanction.*popup/i.test(lower)) {
     return "trust_risk";
   }
+
   if (/rbi|regulatory|ban|suspended|compliance.*issue|penalty|fine|sec.*fine|enforcement.*action|investigation/i.test(lower)) {
     return "regulatory";
   }
@@ -69,7 +77,13 @@ export function classifySignalType(text: string, normalizedType?: string): Norma
 
   const lower = text.toLowerCase();
 
-  if (/fraud|scam|₹\s*\d+\s*(?:cr|crore)|money.*launder|security.*breach|sanction.*popup|data.*breach|credential.*leak|class.*action|lawsuit/i.test(lower)) return "trust_risk";
+  if (/fraud|security|compliance|data|credential/i.test(lower)) {
+    if (NEGATIVE_CONTEXT.test(lower) || /scam|breach|leak|class.*action|lawsuit/i.test(lower)) {
+      return "trust_risk";
+    }
+  }
+  if (/₹\s*\d+\s*(?:cr|crore)|money.*launder|sanction.*popup/i.test(lower)) return "trust_risk";
+  
   if (/rbi|regulatory|ban|suspended|compliance.*issue|penalty|fine|sec.*fine|enforcement.*action|investigation/i.test(lower)) return "regulatory";
   if (/loss|declin|revenue.*drop|widen.*loss|net.*loss|operating.*loss|default|bankrupt|insolven/i.test(lower)) return "financial_health";
   if (/outage|service.*disrupt|downtime|system.*fail|breach|leak/i.test(lower)) return "reliability";

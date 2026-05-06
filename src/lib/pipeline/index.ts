@@ -18,6 +18,7 @@ import {
   renderInternalProfileMarkdown,
   isInternalCompany,
 } from "./context-builders";
+import { getCategoryStrategy } from "./category-strategies";
 
 export type { PipelineStage } from "@/types";
 
@@ -155,20 +156,20 @@ export async function runPipeline(
     callbacks.onStageChange("normalizing", "Normalizing and summarizing signals...");
     const signals = await normalizeSignals(rawSignals);
 
-    const confidence = calculateConfidence(citations.length, signals, citations);
+    // Calculate extraction quality
+    let extractionQuality = 1.0;
+    if (dataGaps.includes("pricing_not_found")) extractionQuality -= 0.15;
+    if (dataGaps.includes("complaints_not_found")) extractionQuality -= 0.15;
+    if (!extracted.positioning?.tagline || extracted.positioning.tagline.length < 10) extractionQuality -= 0.2;
+    extractionQuality = Math.max(0, extractionQuality);
 
-    // DEGRADATION: Adjust confidence based on missing critical fields only (no double-penalty on signals)
-    if (dataGaps.includes("pricing_not_found")) {
-      confidence.score -= 0.1;
-      confidence.factors.push("⚠ Missing pricing data (-0.1)");
-    }
-    if (dataGaps.includes("complaints_not_found")) {
-      confidence.score -= 0.1;
-      confidence.factors.push("⚠ Missing complaint/negative data (-0.1)");
-    }
-
-    // Ensure score doesn't drop below 0.1
-    confidence.score = Math.max(0.1, Math.round(confidence.score * 100) / 100);
+    const confidence = calculateConfidence(
+      resolution.entityConfidence,
+      classification.confidence,
+      extractionQuality,
+      signals,
+      citations
+    );
 
     // If signals are empty but we have classification, boost confidence from classification
     if (signals.length === 0) {
@@ -199,21 +200,16 @@ export async function runPipeline(
 
     const ae_battlecard = sanitizeForAE(raw_ae_battlecard);
 
-    callbacks.onStageChange("vars", "Generating VARS positioning...");
+    callbacks.onStageChange("vars", "Generating category-aware VARS positioning...");
 
-    const acknowledgePoints = [
-      ...(extracted.customer_truths?.positives || []),
-      ...(extracted.positioning?.differentiators || [])
-    ].slice(0, 3);
+    const strategy = getCategoryStrategy(classification.category);
 
-    // Deterministic VARS from extracted data (Synthesis instead of static text)
+    // Deterministic VARS from extracted data, using Category Strategy Map for consistent semantics
     const vars_layer = {
-      validate: extracted.positioning?.tagline || `Prospects consider ${competitor} when evaluating fintech solutions`,
-      acknowledge: acknowledgePoints.length > 0
-        ? acknowledgePoints.map(p => `- ${p}`).join("\n")
-        : `- Strong market presence\n- Established feature set`,
-      reframe: `While ${competitor} solves specific problems, it is not a unified BFSI infrastructure layer. Building on disparate systems creates compliance and scaling risks.`,
-      specify: `Blostem provides a native, compliant infrastructure layer where FD/RD capabilities are built-in, not bolted on.`,
+      validate: extracted.VARS?.validate || extracted.positioning?.tagline || strategy.validate,
+      acknowledge: extracted.VARS?.acknowledge || strategy.acknowledge,
+      reframe: strategy.reframe,
+      specify: strategy.specify,
     };
 
     // Pre-rendering sanity checks

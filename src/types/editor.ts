@@ -1,8 +1,7 @@
 import type { Editor } from "@tiptap/react";
 export interface BattlecardEditorProps {
-  html: string;
-  onChange?: (html: string) => void;
-  onExportPdf?: (html: string) => void;
+  onChange?: (markdown: string) => void;
+  onExportPdf?: (markdown: string) => void;
   markdown?: string;
   onCopyMarkdown?: () => void;
 }
@@ -16,7 +15,6 @@ export interface ToolbarButtonProps {
 }
 
 export interface ToolbarProps {
-  editor: Editor;
   mode: EditorMode;
   onModeChange: (mode: EditorMode) => void;
   onExportPdf: () => void;
@@ -25,7 +23,7 @@ export interface ToolbarProps {
 }
 
 export interface StatusBarProps {
-  editor: Editor;
+  contentLength: number;
   mode: EditorMode;
 }
 

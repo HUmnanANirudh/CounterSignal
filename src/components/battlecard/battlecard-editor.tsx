@@ -1,86 +1,69 @@
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Toolbar, StatusBar } from "@/components/editor";
 import type { BattlecardEditorProps, EditorMode } from "@/types";
+import ReactMarkdown from "react-markdown";
 
 export function BattlecardEditor({
-  html,
   onChange,
   onExportPdf,
-  markdown,
+  markdown = "",
   onCopyMarkdown,
 }: BattlecardEditorProps) {
   const [mode, setMode] = useState<EditorMode>("edit");
+  const [content, setContent] = useState(markdown);
 
-  const editor = useEditor({
-    immediatelyRender: false,
-    extensions: [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
-      }),
-    ],
-    content: html,
-    editable: mode === "edit",
-    editorProps: {
-      attributes: {
-        class: "battlecard-editor-content",
-      },
-    },
-    onUpdate: ({ editor }) => {
-      onChange?.(editor.getHTML());
-    },
-  });
-
-  // Toggle editable when mode changes
+  // Sync content when incoming markdown changes
   useEffect(() => {
-    if (editor) {
-      editor.setEditable(mode === "edit");
-    }
-  }, [mode, editor]);
+    setContent(markdown);
+  }, [markdown]);
 
-  // Sync content when incoming HTML changes (new battlecard generated)
-  useEffect(() => {
-    if (editor && html && editor.getHTML() !== html) {
-      editor.commands.setContent(html);
-    }
-  }, [html, editor]);
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value;
+    setContent(newValue);
+    onChange?.(newValue);
+  };
 
   const handleExportPdf = useCallback(() => {
-    if (!editor) return;
-    onExportPdf?.(editor.getHTML());
-  }, [editor, onExportPdf]);
+    onExportPdf?.(content);
+  }, [content, onExportPdf]);
 
   const handleCopyMarkdown = useCallback(() => {
-    if (!markdown) return;
-    navigator.clipboard.writeText(markdown).then(() => {
+    navigator.clipboard.writeText(content).then(() => {
       toast.success("Markdown copied to clipboard");
     });
     onCopyMarkdown?.();
-  }, [markdown, onCopyMarkdown]);
-
-  if (!editor) return null;
+  }, [content, onCopyMarkdown]);
 
   return (
-    <Card className="overflow-hidden border border-border/60 shadow-lg">
+    <Card className="overflow-hidden border border-border/60 shadow-lg flex flex-col h-[600px]">
       <Toolbar
-        editor={editor}
         mode={mode}
         onModeChange={setMode}
         onExportPdf={handleExportPdf}
         onCopyMarkdown={handleCopyMarkdown}
-        hasMarkdown={!!markdown}
+        hasMarkdown={!!content}
       />
 
-      <div
-        className={`editor-wrapper ${mode === "preview" ? "preview-mode" : "edit-mode"}`}
-      >
-        <EditorContent editor={editor} className="battlecard-editor" />
+      <div className={`flex-1 bg-background ${mode === "preview" ? "overflow-auto" : "flex flex-col"}`}>
+        {mode === "edit" ? (
+          <textarea
+            value={content}
+            onChange={handleChange}
+            className="flex-1 w-full p-4 resize-none focus:outline-none font-mono text-sm bg-transparent"
+            placeholder="Enter markdown..."
+          />
+        ) : (
+          <div className="p-6 prose prose-slate max-w-none dark:prose-invert">
+            <ReactMarkdown>
+              {content}
+            </ReactMarkdown>
+          </div>
+        )}
       </div>
 
-      <StatusBar editor={editor} mode={mode} />
+      <StatusBar contentLength={content.length} mode={mode} />
     </Card>
   );
 }

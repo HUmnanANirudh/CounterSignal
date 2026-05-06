@@ -16,10 +16,11 @@ CounterSignal is a real-time competitive intelligence engine that transforms web
 
 A pipeline that:
 1. Researches a named fintech/BFSI competitor via live web search
-2. Extracts positioning, pricing posture, and customer sentiment
-3. Validates signals across multiple sources and assigns confidence scores
-4. Generates a structured battlecard with VARS positioning, objections, and landmines
-5. Gracefully degrades when data is sparse — never making up content
+2. Classifies the entity across 30+ strict BFSI categories (e.g., `payment_gateway`, `merchant_of_record`)
+3. Extracts buyer-operational truths, pricing posture, and strategic overlap
+4. Maps findings to Category-Aware Strategy Templates to ensure semantic consistency
+5. Synthesizes AE primitives (VARS, landmines, FUD counters) based on operational implications
+6. Generates a structured battlecard with dynamic confidence scoring
 
 ### Why It's Different
 
@@ -43,16 +44,18 @@ Most AI tools optimize for coverage. We optimize for accuracy.
 ```
 Competitor Name → Entity Resolution → Web Search → Preprocessing
                                                        ↓
-                                              Classification (competitor/partner/supply/non-comp)
+                                              Classification (30+ Categories)
                                                        ↓
                             ┌──────────────────────────┼──────────────────────────┐
                             ↓                          ↓                          ↓
-                    Full Battlecard           Supply-Side Card           Strategic Context
-                    (competitor)              (NBFCs, FD)                (aggregators)
+                    Extraction Layer           Supply-Side Card           Strategic Context
+               (Operational Implications)      (NBFCs, FD)                (aggregators)
                             ↓
-                    Extract → Signals → Normalize → Primitives → VARS
+                    Category Strategy Map
+                 (Semantic Synthesis & VARS)
                             ↓
-                    Render + Citations + Confidence Score
+               AE Battlecard & Deal Primitives
+                    (w/ Confidence Score)
 ```
 
 ### Key Design Decisions
@@ -63,24 +66,23 @@ Competitor Name → Entity Resolution → Web Search → Preprocessing
 - Signal validation requiring cross-domain evidence
 - Confidence-gated section suppression (VARS, objections, landmines)
 
+**Contextual Polarity for Signals**
+Negative signals are not captured using naive keyword matches. "Fraud prevention" is a feature; "₹40Cr fraud penalty" is a risk. Signals are evaluated using contextual polarity arrays to prevent features from polluting objection workflows.
+
 **Signal-Indexed Derivation**
-Objections, counters, landmines all derive from actual signal content — not templates:
+Objections, counters, and landmines all derive from actual signal content focusing on architectural lock-in, custody constraints, and liability transfers:
 
 ```
-Signal: "₹500 crore RBI penalty on Razorpay"
-Objection: "They've faced regulatory action — what does that mean for your compliance?"
-Landmine: "How has Razorpay's regulatory exposure affected their enterprise customers?"
-
-vs.
-
-Template: "Regulatory issues may affect customer trust" ← same for every company
+Signal: "Merchant of record abstracts payment flow"
+Landmine: "Who owns the merchant relationship when disputes occur under the MoR structure?"
 ```
 
-**LLM Normalization**
-When raw signals are weak or fragmented, a targeted LLM call consolidates them into coherent summaries — applied sparingly, not as a fallback for missing data.
+**Holistic Confidence Scoring**
+Confidence is no longer just "signal count". The formula weights pipeline health holistically:
+`confidence = (entityCertainty * 0.3) + (classificationCertainty * 0.3) + (extractionQuality * 0.2) + (signalQuality * 0.2)`
 
-**Deterministic VARS Synthesis**
-VARS positioning synthesizes from extracted data rather than a separate LLM call — faster, more consistent, traces directly to source material.
+**Category-Level Synthesis (VARS)**
+To prevent repetitive, generic text across different competitors, the system maps the entity to one of 30+ strict BFSI categories (e.g., `broker`, `wallet`, `merchant_of_record`). `Reframe` and `Specify` statements are pulled from deterministic category playbooks to ensure *consistent category semantics*, while the LLM focuses only on extracting the competitor's specific *operational implications*.
 
 ## Project Structure
 
@@ -96,14 +98,15 @@ src/
 ├── lib/
 │   ├── blostem-profile.ts        # Blostem profile
 │   └── pipeline/                # Core pipeline
-│       ├── index.ts             # Orchestrator + VARS synthesis
+│       ├── category-strategies.ts # Category-aware semantic playbooks
+│       ├── index.ts             # Orchestrator + Synthesis
 │       ├── search.ts            # Web search
 │       ├── preprocess.ts        # Rules-based extraction
 │       ├── classify.ts          # Market role classification
-│       ├── extract.ts           # LLM extraction
-│       ├── signals.ts           # Signal validation
+│       ├── extract.ts           # Operational implication extraction
+│       ├── signals.ts           # Contextual polarity & Confidence
 │       ├── normalize.ts         # LLM normalization
-│       ├── deal-primitives.ts   # AE primitives
+│       ├── deal-primitives.ts   # AE primitives (Landmines, Objections)
 │       ├── render.ts            # Markdown rendering
 │       ├── context-builders.ts  # Supply/non-comp cards
 │       └── entity-resolution.ts # Entity verification
@@ -113,9 +116,11 @@ src/
 ## Tech Stack
 
 - **Runtime**: Bun + Next.js
-- **AI**: Google Gemini via @ai-sdk/google
-- **Search**: Tavily Web Search
-- **UI**: React 19, shadcn/ui, Tailwind CSS v4
+- **AI**: Google Gemini via `ai` SDK + `@ai-sdk/google`
+- **Search**: Tavily via `@tavily/core`
+- **UI**: React 19, shadcn/ui, Tailwind CSS v4, base-ui, TipTap editor
+- **PDF Export**: jsPDF
+- **Markdown**: react-markdown + remark-gfm
 
 ## Setup
 

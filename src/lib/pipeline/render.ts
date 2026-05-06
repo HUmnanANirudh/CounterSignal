@@ -5,7 +5,7 @@ const MAX_TOTAL_LINES = 1200;
 const MAX_WORDS_PER_DISMISS = 12;
 
 // Text sanitization - AE-ready language (strict)
-function sanitize(text: string | undefined | null, maxLen = 200): string {
+function sanitize(text: string | undefined | null, maxLen = 250): string {
   if (!text) return "";
 
   let cleaned = text
@@ -22,13 +22,18 @@ function sanitize(text: string | undefined | null, maxLen = 200): string {
     .replace(/\s+/g, " ")
     .trim();
 
-  // Truncate at sentence boundary
+  // Truncate at sentence boundary or safely
   if (cleaned.length > maxLen) {
     const lastSentence = cleaned.slice(0, maxLen).lastIndexOf(".");
+    const lastParen = cleaned.slice(0, maxLen).lastIndexOf(")");
     if (lastSentence > maxLen * 0.6) {
       cleaned = cleaned.slice(0, lastSentence + 1);
+    } else if (lastParen > maxLen * 0.8) {
+      cleaned = cleaned.slice(0, lastParen + 1);
     } else {
-      cleaned = cleaned.slice(0, maxLen);
+      // Avoid cutting in the middle of a word
+      const lastSpace = cleaned.slice(0, maxLen).lastIndexOf(" ");
+      cleaned = cleaned.slice(0, lastSpace > 0 ? lastSpace : maxLen);
     }
   }
 
@@ -88,8 +93,11 @@ export function renderMarkdown(battlecard: Battlecard): string {
   }
 
   const lines: string[] = [];
-  const add = (s: string) => lines.push(s);
-  const addSection = (title: string) => { add(`## ${title}`); };
+  const add = (s: string) => lines.push(s ? s + "  " : "");
+  const addSection = (title: string) => { 
+    if (lines.length > 0) add(""); 
+    add(`## ${title}`); 
+  };
   const addBullet = (text: string, maxLen = 120) => add(`- ${complete(sanitize(text, maxLen))}`);
 
   // Header
@@ -148,7 +156,11 @@ export function renderMarkdown(battlecard: Battlecard): string {
       add(`**"${sanitize(obj.objection, 50)}"**`);
       add(`Counter: ${complete(sanitize(obj.counter, 180))}`);
       if (obj.evidence?.length) {
-        add(`Evidence: ${obj.evidence.map(e => `[${e}]`).join(", ")}`);
+        const evidenceLinks = obj.evidence.map(e => {
+          const cit = battlecard.citations?.find(c => c.id === e);
+          return cit && cit.url ? `[${e}](${cit.url})` : `[${e}]`;
+        });
+        add(`Evidence: ${evidenceLinks.join(", ")}`);
       }
       add(""); // blank line between objections
     }
@@ -231,6 +243,14 @@ export function renderMarkdown(battlecard: Battlecard): string {
     }
   }
 
+  // Strategic Overlap
+  if (AE_BATTLECARD.strategic_overlap?.length) {
+    addSection("Strategic Overlap");
+    for (const overlap of AE_BATTLECARD.strategic_overlap) {
+      addBullet(overlap, 100);
+    }
+  }
+
   // Strategic Relationship
   if (AE_BATTLECARD.strategic_relationship) {
     addSection("Strategic Relationship");
@@ -267,7 +287,7 @@ export function renderMarkdown(battlecard: Battlecard): string {
   if (citations?.length) {
     addSection("Sources");
     for (const cit of citations.slice(0, 5)) {
-      add(`[${cit.id}] ${sanitize(cit.title, 60)} — ${sanitize(cit.source)}`);
+      add(`[${cit.id}](${cit.url}) ${sanitize(cit.title, 60)} — ${sanitize(cit.source)}`);
     }
   }
 

@@ -2,6 +2,18 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Manual typography styles for ReactMarkdown preview */
+.prose h1 { @apply text-3xl font-bold mt-6 mb-4; }
+.prose h2 { @apply text-2xl font-bold mt-8 mb-4 border-b border-border pb-2; }
+.prose h3 { @apply text-xl font-bold mt-6 mb-4; }
+.prose p { @apply my-3 leading-relaxed; }
+.prose ul { @apply list-disc list-outside ml-6 my-3 space-y-1; }
+.prose ol { @apply list-decimal list-outside ml-6 my-3 space-y-1; }
+.prose li { @apply my-1 pl-1; }
+.prose strong { @apply font-bold text-foreground; }
+.prose a { @apply text-blue-600 hover:underline dark:text-blue-400 font-medium; }
+.prose hr { @apply my-8 border-t border-border; }
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

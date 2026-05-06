@@ -191,75 +191,42 @@ export function validateCitationIntegrity(
 }
 
 export function calculateConfidence(
-  nCitations: number,
+  entityConfidence: number,
+  classificationConfidence: number,
+  extractionQuality: number,
   signals: Signal[],
   citations: Citation[],
 ): { score: number; factors: string[] } {
   const factors: string[] = [];
 
+  factors.push(`Entity Certainty (${Math.round(entityConfidence * 100)}%)`);
+  factors.push(`Category Certainty (${Math.round(classificationConfidence * 100)}%)`);
+  factors.push(`Extraction Quality (${Math.round(extractionQuality * 100)}%)`);
+
+  // Signal Quality
   const uniqueDomains = new Set(citations.map(c => getSourceDomain(c.url))).size;
   const domainDiversityScore = Math.min(uniqueDomains / 3, 1);
-
-  const domainTypes = citations.map(c => getDomainType(c.url));
-  const uniqueDomainTypes = new Set(domainTypes).size;
-
-  let domainPenalty = 0;
-  if (uniqueDomains < 2) {
-    domainPenalty = 0.2;
-    factors.push(`⚠ Only ${uniqueDomains} source domain(s) - low diversity`);
-  } else {
-    factors.push(`✓ ${uniqueDomains} source domains - good diversity`);
-  }
-
-  if (uniqueDomainTypes < 2) {
-    factors.push(`⚠ Only ${uniqueDomainTypes} domain type(s) - need review+news+forum`);
-  } else {
-    factors.push(`✓ ${uniqueDomainTypes} domain types - good cross-type coverage`);
-  }
-
-  const sourceCountScore = Math.min(nCitations / 6, 1);
-  factors.push(`${nCitations} sources (need 6+ for max)`);
-
-  const normalizedTypes = signals.map(s => s.normalizedType).filter(Boolean);
-  const uniqueNormalized = new Set(normalizedTypes);
-  const signalDiversityScore = uniqueNormalized.size / Math.max(normalizedTypes.length, 1);
-  factors.push(`${uniqueNormalized.size} signal types from ${normalizedTypes.length} signals`);
-
   const signalStrengthScore = Math.min(signals.length / 5, 1);
-  factors.push(`signal strength: ${signals.length} signals (need 5+ for max)`);
-
+  
   const highSeverityCount = signals.filter(s =>
     ["trust_risk", "financial_health", "regulatory"].includes(s.normalizedType || "")
   ).length;
   const severityBonus = highSeverityCount > 0 ? 0.1 * Math.min(highSeverityCount / 3, 1) : 0;
-  if (severityBonus > 0) {
-    factors.push(`severity bonus: ${highSeverityCount} high-impact signals`);
-  }
+  
+  const signalQuality = Math.min(1, (domainDiversityScore * 0.4 + signalStrengthScore * 0.6) + severityBonus);
+  factors.push(`Signal Quality (${Math.round(signalQuality * 100)}%)`);
 
-  const recencyScore = 0.5;
-
-  const baseScore = (
-    0.30 * sourceCountScore +
-    0.20 * domainDiversityScore +
-    0.15 * signalDiversityScore +
-    0.20 * signalStrengthScore +
-    0.10 * recencyScore +
-    0.05 * (uniqueDomainTypes >= 2 ? 1 : 0) +
-    severityBonus
+  // New Model: confidence = entityConfidence * 0.3 + classificationConfidence * 0.3 + extractionQuality * 0.2 + signalQuality * 0.2
+  const score = (
+    entityConfidence * 0.30 +
+    classificationConfidence * 0.30 +
+    extractionQuality * 0.20 +
+    signalQuality * 0.20
   );
 
-  const weakSignals = signals.filter(s =>
-    ["trust_risk", "financial_health", "regulatory", "reliability"].includes(s.normalizedType || "")
-  ).length;
-  let signalCap = 0.95;
-  if (weakSignals <= 4) {
-    signalCap = 0.90;
-    factors.push(`⚠ Signal cap: ${weakSignals} weak signals, capping at 90%`);
-  }
+  const finalScore = Math.max(0.1, Math.min(0.98, score));
 
-  const score = Math.max(0.1, Math.min(signalCap, baseScore - domainPenalty));
+  console.log(`[Confidence] Score: ${Math.round(finalScore * 100)}% (${factors.join(", ")})`);
 
-  console.log(`[Confidence] Score: ${Math.round(score * 100)}% (${factors.join(", ")})`);
-
-  return { score: Math.round(score * 100) / 100, factors };
+  return { score: Math.round(finalScore * 100) / 100, factors };
 }
