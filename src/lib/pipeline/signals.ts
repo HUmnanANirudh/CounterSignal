@@ -3,6 +3,7 @@ import type { SignalSeverity, SignalAppearance } from "@/types/signals";
 import {
   normalizeDomain,
   getDomainType,
+  getSourceWeight,
 } from "./utils/domain";
 import {
   normalizeSignal,
@@ -10,8 +11,52 @@ import {
   classifySeverity,
 } from "./utils/signal-classify";
 
-function getSourceDomain(url: string): string {
-  return normalizeDomain(url);
+
+export function resolveContradictions(signals: Signal[]): Signal[] {
+  if (signals.length <= 1) return signals;
+
+  const resolved: Signal[] = [];
+  const typeGroups: Record<string, Signal[]> = {};
+
+  // Group by type to find potential contradictions
+  for (const s of signals) {
+    const type = s.normalizedType || "general";
+    if (!typeGroups[type]) typeGroups[type] = [];
+    typeGroups[type].push(s);
+  }
+
+  for (const [type, group] of Object.entries(typeGroups)) {
+    if (group.length <= 1) {
+      resolved.push(...group);
+      continue;
+    }
+
+    // Heuristic: If we have multiple signals of the same type, check if they contradict
+    // e.g., "Easy integration" vs "Complex integration"
+    const positives = group.filter(s => /\b(easy|simple|fast|seamless)\b/i.test(s.value));
+    const negatives = group.filter(s => /\b(complex|difficult|slow|broken|issue|problem)\b/i.test(s.value));
+
+    if (positives.length > 0 && negatives.length > 0) {
+      // Contradiction detected!
+      // Arbitration: Weighted authority + volume
+      const posWeight = positives.reduce((acc, s) => acc + (s.authorityScore || 0.5), 0);
+      const negWeight = negatives.reduce((acc, s) => acc + (s.authorityScore || 0.5), 0);
+
+      if (negWeight >= posWeight) {
+        // Favor the negative/risk signal for AE battlecards (Safety first)
+        const bestNeg = negatives.sort((a, b) => (b.authorityScore || 0) - (a.authorityScore || 0))[0];
+        bestNeg.summary = `${bestNeg.value.slice(0, 50)} (Note: some sources claim ease of use, but experts cite complexity)`;
+        resolved.push(bestNeg);
+      } else {
+        const bestPos = positives.sort((a, b) => (b.authorityScore || 0) - (a.authorityScore || 0))[0];
+        resolved.push(bestPos);
+      }
+    } else {
+      resolved.push(...group);
+    }
+  }
+
+  return resolved;
 }
 
 export function deriveSignals(
@@ -36,7 +81,7 @@ export function deriveSignals(
       signalAppearances[key] = { normalizedType, text, citationIds: [], domains: new Set(), domainTypes: new Set(), severity };
     }
 
-    const domain = getSourceDomain(citation.url);
+    const domain = normalizeDomain(citation.url);
     const domainType = getDomainType(citation.url);
     signalAppearances[key].citationIds.push(citation.id);
     signalAppearances[key].domains.add(domain);
@@ -155,6 +200,12 @@ export function deriveSignals(
     }
 
     const id = `signal_${signalIndex++}`;
+    const citationIds = appearance.citationIds.slice(0, 3);
+    const domainWeights = citationIds.map(cid => {
+      const cit = citations.find(c => c.id === cid);
+      return cit ? getSourceWeight(cit.url) : 0.5;
+    });
+    const avgAuthority = domainWeights.reduce((acc, w) => acc + w, 0) / domainWeights.length;
 
     signals.push({
       id,
@@ -162,14 +213,17 @@ export function deriveSignals(
       value: appearance.text.slice(0, 150),
       citationIds: appearance.citationIds.slice(0, 3),
       normalizedType: appearance.normalizedType,
+      authorityScore: avgAuthority,
+      corroborationCount: appearance.domains.size,
     });
 
     sourceMap[id] = appearance.citationIds.slice(0, 3);
   }
 
-  console.log(`[Signals] Derived ${signals.length} validated signals`);
+  const resolvedSignals = resolveContradictions(signals);
+  console.log(`[Signals] Derived ${signals.length} validated signals, resolved to ${resolvedSignals.length}`);
 
-  return { signals, sourceMap };
+  return { signals: resolvedSignals, sourceMap };
 }
 
 export function validateCitationIntegrity(
@@ -196,6 +250,7 @@ export function calculateConfidence(
   extractionQuality: number,
   signals: Signal[],
   citations: Citation[],
+  dataGaps: string[] = []
 ): { score: number; factors: string[] } {
   const factors: string[] = [];
 
@@ -203,28 +258,45 @@ export function calculateConfidence(
   factors.push(`Category Certainty (${Math.round(classificationConfidence * 100)}%)`);
   factors.push(`Extraction Quality (${Math.round(extractionQuality * 100)}%)`);
 
-  // Signal Quality
-  const uniqueDomains = new Set(citations.map(c => getSourceDomain(c.url))).size;
-  const domainDiversityScore = Math.min(uniqueDomains / 3, 1);
-  const signalStrengthScore = Math.min(signals.length / 5, 1);
+  // Signal Quality & Authority
+  const uniqueDomains = new Set(citations.map(c => normalizeDomain(c.url))).size;
+  const domainDiversityScore = Math.min(uniqueDomains / 4, 1);
+  const avgSignalAuthority = signals.length > 0 
+    ? signals.reduce((acc, s) => acc + (s.authorityScore || 0.5), 0) / signals.length 
+    : 0.5;
   
   const highSeverityCount = signals.filter(s =>
     ["trust_risk", "financial_health", "regulatory"].includes(s.normalizedType || "")
   ).length;
-  const severityBonus = highSeverityCount > 0 ? 0.1 * Math.min(highSeverityCount / 3, 1) : 0;
   
-  const signalQuality = Math.min(1, (domainDiversityScore * 0.4 + signalStrengthScore * 0.6) + severityBonus);
-  factors.push(`Signal Quality (${Math.round(signalQuality * 100)}%)`);
+  const corroborationBonus = signals.reduce((acc, s) => acc + (s.corroborationCount || 1), 0) / 10;
+  const signalQuality = Math.min(1, (domainDiversityScore * 0.3 + avgSignalAuthority * 0.5 + Math.min(corroborationBonus, 0.2)));
+  
+  factors.push(`Signal Authority (${Math.round(signalQuality * 100)}%)`);
 
-  // New Model: confidence = entityConfidence * 0.3 + classificationConfidence * 0.3 + extractionQuality * 0.2 + signalQuality * 0.2
+  // Data Gap Penalty
+  const gapPenalty = dataGaps.length * 0.05;
+  
+  // Strategy Fit: If category is strictly mapped, higher confidence
+  const strategyFit = classificationConfidence > 0.7 ? 1 : 0.8;
+
+  // Extraction completeness penalty
+  let completenessPenalty = gapPenalty;
+  if (extractionQuality < 0.7) {
+    completenessPenalty += 0.1;
+    factors.push(`Low Extraction Quality (-10%)`);
+  }
+
+  // New multi-factor Model
   const score = (
-    entityConfidence * 0.30 +
-    classificationConfidence * 0.30 +
-    extractionQuality * 0.20 +
-    signalQuality * 0.20
-  );
+    (entityConfidence * 0.25) +
+    (classificationConfidence * 0.25) +
+    (extractionQuality * 0.20) +
+    (signalQuality * 0.20) +
+    (strategyFit * 0.10)
+  ) - completenessPenalty;
 
-  const finalScore = Math.max(0.1, Math.min(0.98, score));
+  const finalScore = Math.max(0.05, Math.min(0.98, score));
 
   console.log(`[Confidence] Score: ${Math.round(finalScore * 100)}% (${factors.join(", ")})`);
 

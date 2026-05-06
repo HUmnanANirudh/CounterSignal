@@ -6,9 +6,8 @@ import {
   scoreContentMatch,
   overlapsWithBlostem,
   extractProblemStatement,
-  extractBusinessModelHints,
-  classifyFromHints,
 } from "./entity-resolution";
+import { classifyCompetitor } from "./classify";
 import {
   normalizeDomain,
   getDomainType,
@@ -393,11 +392,14 @@ export async function search(competitor: string): Promise<SearchResult> {
 
     // Extract business model hints from available content
     const sampleContent = relevantResults.map(r => r.content).join("\n");
-    const hints = extractBusinessModelHints(sampleContent);
-    const categoryResult = classifyFromHints(hints);
+    const categoryResult = classifyCompetitor(competitor, sampleContent);
 
     if (categoryResult.confidence > 0.5) {
-      inferredCategory = categoryResult;
+      inferredCategory = {
+        category: categoryResult.category,
+        confidence: categoryResult.confidence,
+        reasoning: categoryResult.reasoning
+      };
       console.log(`[Search] Inferred category: ${categoryResult.category} (${categoryResult.confidence})`);
     }
   }
@@ -429,11 +431,14 @@ export async function search(competitor: string): Promise<SearchResult> {
       // If secondary search gave us new content, try category inference again
       if (secondary.results.length > 0 && !inferredCategory) {
         const allContent = [...relevantResults, ...secondary.results].map(r => r.content).join("\n");
-        const hints = extractBusinessModelHints(allContent);
-        const categoryResult = classifyFromHints(hints);
+        const categoryResult = classifyCompetitor(competitor, allContent);
 
         if (categoryResult.confidence > 0.4) {
-          inferredCategory = categoryResult;
+          inferredCategory = {
+            category: categoryResult.category,
+            confidence: categoryResult.confidence,
+            reasoning: categoryResult.reasoning
+          };
         }
       }
     } catch (e) {

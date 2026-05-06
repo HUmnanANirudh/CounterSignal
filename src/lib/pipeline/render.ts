@@ -18,7 +18,6 @@ function sanitize(text: string | undefined | null, maxLen = 250): string {
     .replace(/\s+\.\s+/g, ". ")
     // Fix broken sentence fragments
     .replace(/\b(has|have|had)\.\s+(for|with|when|then)\b/gi, ". ")
-    // Normalize whitespace
     .replace(/\s+/g, " ")
     .trim();
 
@@ -82,6 +81,17 @@ function deduplicateObjections<T extends { objection: string }>(items: T[]): T[]
   });
 }
 
+// Semantic diversity enforcement (Anti-genericity)
+function deduplicatePhrases(items: string[]): string[] {
+  const seen = new Set<string>();
+  return items.filter(item => {
+    const normalized = item.toLowerCase().trim().replace(/[^\w\s]/g, "");
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+}
+
 export function renderMarkdown(battlecard: Battlecard): string {
   const { competitor, AE_BATTLECARD, citations, confidence } = battlecard;
 
@@ -127,7 +137,7 @@ export function renderMarkdown(battlecard: Battlecard): string {
       add(`**Segments:** ${battlecard.positioning.targetSegments.slice(0, 2).map(s => sanitize(s, 40)).join(", ")}`);
     }
     if (battlecard.positioning.differentiators?.length) {
-      for (const diff of battlecard.positioning.differentiators.slice(0, 2)) {
+      for (const diff of deduplicatePhrases(battlecard.positioning.differentiators).slice(0, 2)) {
         addBullet(diff, 80);
       }
     }
@@ -169,7 +179,7 @@ export function renderMarkdown(battlecard: Battlecard): string {
   // Why We Win (max 3)
   if (AE_BATTLECARD.why_we_win?.length) {
     addSection("Why We Win");
-    for (const win of AE_BATTLECARD.why_we_win.slice(0, 3)) {
+    for (const win of deduplicatePhrases(AE_BATTLECARD.why_we_win).slice(0, 3)) {
       addBullet(win, 100);
     }
   }
@@ -177,7 +187,7 @@ export function renderMarkdown(battlecard: Battlecard): string {
   // Why We Lose (max 2)
   if (AE_BATTLECARD.why_we_lose?.length) {
     addSection("Why We Lose");
-    for (const lose of AE_BATTLECARD.why_we_lose.slice(0, 2)) {
+    for (const lose of deduplicatePhrases(AE_BATTLECARD.why_we_lose).slice(0, 2)) {
       addBullet(lose, 100);
     }
   }
@@ -193,7 +203,7 @@ export function renderMarkdown(battlecard: Battlecard): string {
   // Landmines (max 3, clean questions)
   if (AE_BATTLECARD.landmines?.length) {
     addSection("Landmines");
-    for (const lm of AE_BATTLECARD.landmines.slice(0, 3)) {
+    for (const lm of deduplicatePhrases(AE_BATTLECARD.landmines).slice(0, 3)) {
       addBullet(lm, 120);
     }
   }
@@ -201,7 +211,7 @@ export function renderMarkdown(battlecard: Battlecard): string {
   // FUD Flip (max 2, clean statements)
   if (AE_BATTLECARD.FUD_responses?.length) {
     addSection("FUD Flip");
-    for (const fud of AE_BATTLECARD.FUD_responses.slice(0, 2)) {
+    for (const fud of deduplicatePhrases(AE_BATTLECARD.FUD_responses).slice(0, 2)) {
       addBullet(fud, 120);
     }
   }
@@ -209,7 +219,7 @@ export function renderMarkdown(battlecard: Battlecard): string {
   // Proof Points (max 2)
   if (AE_BATTLECARD.proof_points?.length) {
     addSection("Proof Points");
-    for (const proof of AE_BATTLECARD.proof_points.slice(0, 2)) {
+    for (const proof of deduplicatePhrases(AE_BATTLECARD.proof_points).slice(0, 2)) {
       addBullet(proof, 120);
     }
   }
@@ -220,7 +230,7 @@ export function renderMarkdown(battlecard: Battlecard): string {
   
   if ((truths.keyComplaints ?? []).length > 0) {
     add(`**Key Issues:**`);
-    for (const c of truths.keyComplaints!.slice(0, 2)) {
+    for (const c of deduplicatePhrases(truths.keyComplaints!).slice(0, 2)) {
       addBullet(c, 100);
     }
   } else {
@@ -229,24 +239,47 @@ export function renderMarkdown(battlecard: Battlecard): string {
 
   if ((truths.positives ?? []).length > 0) {
     add(`**Strengths:**`);
-    for (const p of truths.positives!.slice(0, 2)) {
+    for (const p of deduplicatePhrases(truths.positives!).slice(0, 2)) {
       addBullet(p, 100);
     }
   }
 
-  // Push Deal When (max 3)
-  if (AE_BATTLECARD.compete_aggressively_when?.length) {
-    addSection("Push Deal When");
-    for (const trigger of AE_BATTLECARD.compete_aggressively_when.slice(0, 3)) {
-      addBullet(trigger, 100);
+  // Strategic Overlap Matrix
+  if (AE_BATTLECARD.strategic_overlap && Object.keys(AE_BATTLECARD.strategic_overlap).length > 0) {
+    addSection("Strategic Overlap Matrix");
+    const matrix = AE_BATTLECARD.strategic_overlap;
+    const formatValue = (v: string) => v === 'yes' ? '🟢 Yes' : v === 'partial' ? '🟡 Partial' : '🔴 No';
+    
+    add(`| Capability | Blostem | ${battlecard.competitor} |`);
+    add(`| :--- | :--- | :--- |`);
+    add(`| Payments | 🟢 Yes | ${formatValue(matrix.payments || 'no')} |`);
+    add(`| BFSI Infra | 🟢 Yes | ${formatValue(matrix.bfsi_infra || 'no')} |`);
+    add(`| Custody | 🔴 No | ${formatValue(matrix.custody || 'no')} |`);
+    add(`| Compliance | 🟢 Yes | ${formatValue(matrix.compliance_layer || 'no')} |`);
+    add(`| Lending | 🟢 Yes | ${formatValue(matrix.lending_stack || 'no')} |`);
+    add("");
+  }
+
+  // Decision Orientation
+  addSection("Decision Orientation");
+  if ((AE_BATTLECARD.compete_aggressively_when ?? []).length > 0) {
+    add(`**Push aggressively when:**`);
+    for (const item of deduplicatePhrases(AE_BATTLECARD.compete_aggressively_when!).slice(0, 3)) {
+      addBullet(item, 120);
+    }
+  }
+  
+  if ((AE_BATTLECARD.do_not_compete_when ?? []).length > 0) {
+    add(`**Avoid competing when:**`);
+    for (const item of deduplicatePhrases(AE_BATTLECARD.do_not_compete_when!).slice(0, 2)) {
+      addBullet(item, 120);
     }
   }
 
-  // Strategic Overlap
-  if (AE_BATTLECARD.strategic_overlap?.length) {
-    addSection("Strategic Overlap");
-    for (const overlap of AE_BATTLECARD.strategic_overlap) {
-      addBullet(overlap, 100);
+  if ((AE_BATTLECARD.why_this_appears_in_deals ?? []).length > 0) {
+    add(`**Why this appears in deals:**`);
+    for (const item of deduplicatePhrases(AE_BATTLECARD.why_this_appears_in_deals!).slice(0, 2)) {
+      addBullet(item, 120);
     }
   }
 
@@ -254,22 +287,6 @@ export function renderMarkdown(battlecard: Battlecard): string {
   if (AE_BATTLECARD.strategic_relationship) {
     addSection("Strategic Relationship");
     add(sanitize(AE_BATTLECARD.strategic_relationship, 200));
-  }
-
-  // Why This Appears in Deals
-  if (AE_BATTLECARD.why_this_appears_in_deals?.length) {
-    addSection("Why This Appears in Deals");
-    for (const reason of AE_BATTLECARD.why_this_appears_in_deals.slice(0, 3)) {
-      addBullet(reason, 100);
-    }
-  }
-
-  // Do Not Compete When
-  if (AE_BATTLECARD.do_not_compete_when?.length) {
-    addSection("Do Not Compete When");
-    for (const rule of AE_BATTLECARD.do_not_compete_when.slice(0, 2)) {
-      addBullet(rule, 100);
-    }
   }
 
   // VARS Framework (core differentiator — always show)

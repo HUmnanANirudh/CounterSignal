@@ -175,7 +175,7 @@ Reviews: ${reviewInfo}
 Negative signals (fraud/regulatory/financial): ${negativeSignalsInfo}
 
 JSON (only one model, one entryPrice):
-{"positioning":{"tagline":"string","targetSegments":[],"differentiators":[]},"pricing_posture":{"model":"subscription|transaction|transaction+MDR|transaction+volume-linked|freemium|custom|unknown","entryPrice":"string","tiers":[],"opacity":"clear|opaque"},"recent_moves":[],"customer_truths":{"positives":[],"negatives":[],"keyComplaints":[]},"strategic_overlap":[],"VARS":{"validate":"string","acknowledge":"string"}}
+{"positioning":{"tagline":"string","targetSegments":[],"differentiators":[]},"pricing_posture":{"model":"subscription|transaction|transaction+MDR|transaction+volume-linked|freemium|custom|unknown","entryPrice":"string","tiers":[],"opacity":"clear|opaque"},"recent_moves":[],"customer_truths":{"positives":[],"negatives":[],"keyComplaints":[]},"strategic_overlap":{"payments":"yes|no|partial","bfsi_infra":"yes|no|partial","custody":"yes|no|partial","compliance_layer":"yes|no|partial","lending_stack":"yes|no|partial"},"decision_orientation":{"compete_aggressively_when":[],"do_not_compete_when":[],"why_this_appears_in_deals":[]},"VARS":{"validate":"string","acknowledge":"string"}}
 
 Return ONLY the JSON object. No markdown, no explanation.`;
   for (let attempt = 0; attempt <= EXTRACTION_MAX_RETRIES; attempt++) {

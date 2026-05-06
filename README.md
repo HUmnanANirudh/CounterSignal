@@ -10,34 +10,25 @@ Hallucinated battlecards don't just hurt positioning — they erode trust with t
 
 ## The Solution
 
-CounterSignal is a real-time competitive intelligence engine that transforms web data into AE-ready battlecards in under 60 seconds. Every output traces back to actual signals — no hallucinated positioning, no generic templates.
+CounterSignal is a GTM intelligence engine that transforms web signals into decision-oriented battlecards. Every output traces back to source-verified evidence, arbitrated through a multi-factor confidence model.
 
-### What We Built
+### GTM Capabilities
 
-A pipeline that:
-1. Researches a named fintech/BFSI competitor via live web search
-2. Classifies the entity across 30+ strict BFSI categories (e.g., `payment_gateway`, `merchant_of_record`)
-3. Extracts buyer-operational truths, pricing posture, and strategic overlap
-4. Maps findings to Category-Aware Strategy Templates to ensure semantic consistency
-5. Synthesizes AE primitives (VARS, landmines, FUD counters) based on operational implications
-6. Generates a structured battlecard with dynamic confidence scoring
+A pipeline that goes beyond raw extraction into **Strategic Intelligence**:
+1. **Signal Arbitration**: Automatically resolves contradictions (e.g., "easy setup" vs "complex integration") using weighted source authority.
+2. **Strategic Overlap Matrix**: Maps competitor capabilities against Blostem's core BFSI infrastructure layer across 5 dimensions.
+3. **Decision Orientation**: Explicitly guides AEs on when to "Push Aggressively" vs "Avoid Competing" based on extracted deal patterns.
+4. **Source Authority Weighting**: Propagates trust from high-signal sources (Bloomberg, Reuters, Inc42) while discounting social noise.
+5. **Anti-Genericity Engine**: Enforces semantic diversity across all sections to eliminate generic prose and repetitive "fluff".
 
 ### Why It's Different
 
-Most AI tools optimize for coverage. We optimize for accuracy.
-
 | Tool Behavior | CounterSignal Behavior |
 |---------------|----------------------|
-| Fills in generic content when data is weak | Suppresses sections, shows "insufficient data" |
-| Assumes all competitors need the same battlecard | Routes to supply card, strategic context, or full battlecard based on market role |
-| Shows confidence scores without acting on them | Gating sections based on confidence thresholds |
-
-## Impact
-
-- **Latency**: <60 seconds from competitor name to battlecard
-- **Confidence-gated output**: Low data quality → graceful degradation, not hallucination
-- **Source-verified**: Every claim traces to actual citations
-- **Path-routing**: Different outputs for competitors, partners, and non-competitors
+| Naive Keyword Matches | Contextual Polarity (Risk vs Feature detection) |
+| Flat Confidence Scores | Multi-factor Scoring (Entity, Class, Extraction, Authority, Strategy Fit) |
+| Signal Volume Bias | Source-Weighted Arbitration (Trusting experts over noise) |
+| Generic Objections | Signal-Indexed Primitives (Derived from architectural implications) |
 
 ## Technical Architecture
 
@@ -55,34 +46,25 @@ Competitor Name → Entity Resolution → Web Search → Preprocessing
                  (Semantic Synthesis & VARS)
                             ↓
                AE Battlecard & Deal Primitives
-                    (w/ Confidence Score)
+                (w/ Confidence Score & Matrix)
 ```
 
 ### Key Design Decisions
 
-**No Hallucination Architecture**
-- Kill switches at entity resolution (< 0.3 confidence)
-- Minimum document threshold before processing
-- Signal validation requiring cross-domain evidence
-- Confidence-gated section suppression (VARS, objections, landmines)
+**Signal Arbitration & Contradiction Resolution**
+The system detects conflicting claims in extracted data. Instead of surfacing contradictions, it arbitrates using **Source Authority Weighting**. If a Bloomberg profile cites complexity while a marketing landing page claims "ease of use," the system favors the high-authority risk signal for AE safety.
 
-**Contextual Polarity for Signals**
-Negative signals are not captured using naive keyword matches. "Fraud prevention" is a feature; "₹40Cr fraud penalty" is a risk. Signals are evaluated using contextual polarity arrays to prevent features from polluting objection workflows.
+**Strategic Overlap Matrix**
+Moves beyond binary competitor classification to model specific capability overlaps:
+- **Payments / BFSI Infra / Custody / Compliance / Lending**
+Renders as a high-readability matrix to help AEs identify the exact point of attack.
 
-**Signal-Indexed Derivation**
-Objections, counters, and landmines all derive from actual signal content focusing on architectural lock-in, custody constraints, and liability transfers:
+**Holistic Multi-Factor Confidence Scoring**
+The confidence score is no longer a simple signal count. It's an aggregate of pipeline health:
+`Score = (Entity 25%) + (Classification 25%) + (Extraction 20%) + (Signal Authority 20%) + (Strategy Fit 10%) - Data Gap Penalties`
 
-```
-Signal: "Merchant of record abstracts payment flow"
-Landmine: "Who owns the merchant relationship when disputes occur under the MoR structure?"
-```
-
-**Holistic Confidence Scoring**
-Confidence is no longer just "signal count". The formula weights pipeline health holistically:
-`confidence = (entityCertainty * 0.3) + (classificationCertainty * 0.3) + (extractionQuality * 0.2) + (signalQuality * 0.2)`
-
-**Category-Level Synthesis (VARS)**
-To prevent repetitive, generic text across different competitors, the system maps the entity to one of 30+ strict BFSI categories (e.g., `broker`, `wallet`, `merchant_of_record`). `Reframe` and `Specify` statements are pulled from deterministic category playbooks to ensure *consistent category semantics*, while the LLM focuses only on extracting the competitor's specific *operational implications*.
+**Semantic Diversity Enforcement**
+An anti-genericity circuit filters semantically redundant phrases across objections, landmines, and customer truths, ensuring the final 1,200-line output is high-density and execution-ready.
 
 ## Project Structure
 
@@ -132,12 +114,3 @@ bun run dev
 Requires:
 - `TAVILY_API_KEY`
 - `GEMINI_API_KEY`
-
-## API
-
-```bash
-POST /api/battlecard
-{ "competitorName": "Razorpay" }
-```
-
-Returns SSE stream with battlecard sections, confidence score, and citations.

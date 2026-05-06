@@ -2,7 +2,7 @@ import type { Citation, ExtractedIntelligence, Signal, AE_BATTLECARD } from "@/t
 import { classifySignalType } from "./utils/signal-classify";
 
 function isActualCustomerComplaint(signal: Signal): boolean {
-  const complaintTypes = ["pricing_complaint", "support_issue", "integration_issue", "onboarding_delay", "quality_issue", "reliability_issue"];
+  const complaintTypes = ["pricing_complaint", "support_issue", "integration_issue", "onboarding_delay", "quality_issue", "reliability"];
   return complaintTypes.includes(signal.normalizedType || "");
 }
 function deriveObjectionFromSignal(signal: Signal): string {
@@ -193,7 +193,7 @@ export function deriveDealPrimitives(
       case "support_issue": quick_dismisses.push(`${competitor}'s support issues cause delays when problems escalate.`); break;
       case "integration_issue": quick_dismisses.push(`${competitor}'s integration complexity adds maintenance overhead.`); break;
       case "onboarding_delay": quick_dismisses.push(`${competitor}'s onboarding timelines delay BFSI product launches.`); break;
-      case "reliability_issue": quick_dismisses.push(`${competitor}'s reliability issues create operational risk.`); break;
+      case "reliability": quick_dismisses.push(`${competitor}'s reliability issues create operational risk.`); break;
     }
   }
 
@@ -273,7 +273,7 @@ export function deriveDealPrimitives(
   if (signalTypes.includes("pricing_complaint")) compete_aggressively_when.push("Prospect complains about pricing opacity or hidden MDR costs");
   if (signalTypes.includes("support_issue")) compete_aggressively_when.push("Prospect has experienced support delays or unresponsiveness");
   if (signalTypes.includes("integration_issue")) compete_aggressively_when.push("Prospect is struggling with multi-bank integration complexity");
-  if (signalTypes.includes("reliability_issue") || signalTypes.includes("trust_risk")) compete_aggressively_when.push("Prospect is concerned about payment reliability or fraud risk");
+  if (signalTypes.includes("reliability") || signalTypes.includes("trust_risk")) compete_aggressively_when.push("Prospect is concerned about payment reliability or fraud risk");
 
   console.log(`[DealPrimitives] Generated: ${objection_handling.length} objections, ${landmines.length} landmines`);
 
@@ -281,7 +281,7 @@ export function deriveDealPrimitives(
     company_overview,
     competitor_type: compType,
     category_contrast,
-    strategic_overlap: intelligence.strategic_overlap || [],
+    strategic_overlap: intelligence.strategic_overlap || {},
     quick_dismisses: quick_dismisses.slice(0, 2),
     objection_handling: objection_handling.slice(0, 3),
     why_we_win: why_we_win.slice(0, 3),
@@ -290,7 +290,12 @@ export function deriveDealPrimitives(
     landmines: landmines.slice(0, 3),
     FUD_responses: fudResponses.slice(0, 2),
     proof_points: proof_points.slice(0, 2),
-    compete_aggressively_when: compete_aggressively_when.slice(0, 3),
+    compete_aggressively_when: [
+      ...(intelligence.decision_orientation?.compete_aggressively_when || []),
+      ...compete_aggressively_when
+    ].slice(0, 3),
+    do_not_compete_when: intelligence.decision_orientation?.do_not_compete_when || [],
+    why_this_appears_in_deals: intelligence.decision_orientation?.why_this_appears_in_deals || [],
     signal_trace: signal_trace.slice(0, 3),
   };
 }

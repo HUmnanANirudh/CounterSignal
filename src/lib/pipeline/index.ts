@@ -5,7 +5,7 @@ import { extract } from "./extract";
 import { deriveSignals, calculateConfidence } from "./signals";
 import { renderMarkdown } from "./render";
 import { sanitizeForAE } from "./sanitize";
-import { classifyCompetitor } from "./classify";
+import { classifyCompetitor, getPricingModelForCategory } from "./classify";
 import { resolveEntity } from "./entity-resolution";
 import { normalizeSignals } from "./normalize";
 import { deriveDealPrimitives } from "./deal-primitives";
@@ -168,7 +168,8 @@ export async function runPipeline(
       classification.confidence,
       extractionQuality,
       signals,
-      citations
+      citations,
+      dataGaps
     );
 
     // If signals are empty but we have classification, boost confidence from classification
@@ -212,13 +213,6 @@ export async function runPipeline(
       specify: strategy.specify,
     };
 
-    // Pre-rendering sanity checks
-    if (!extracted.positioning?.tagline || extracted.positioning.tagline.length < 10) {
-      confidence.score = Math.max(0.1, confidence.score - 0.1);
-      if (!confidence.factors.includes("⚠ Low quality positioning data (-0.1)")) {
-        confidence.factors.push("⚠ Low quality positioning data (-0.1)");
-      }
-    }
 
     if (ae_battlecard.landmines) {
       ae_battlecard.landmines = ae_battlecard.landmines.filter(lm => !lm.includes("undefined") && !lm.includes("[object Object]") && lm.length > 20);
@@ -232,7 +226,9 @@ export async function runPipeline(
       generatedAt: new Date().toISOString(),
       researchDurationMs: Date.now() - startTime,
       positioning: extracted.positioning || { tagline: "unknown", targetSegments: [], differentiators: [] },
-      pricing_posture: extracted.pricing_posture || { model: "unknown", entryPrice: "opaque", tiers: [], opacity: "opaque" },
+      pricing_posture: (extracted.pricing_posture?.model === "unknown" || !extracted.pricing_posture)
+        ? { model: getPricingModelForCategory(classification.category), entryPrice: "opaque", tiers: [], opacity: "opaque" }
+        : extracted.pricing_posture,
       recent_moves,
       customer_truths: extracted.customer_truths || { positives: [], negatives: [], keyComplaints: [] },
       VARS_layer: vars_layer,

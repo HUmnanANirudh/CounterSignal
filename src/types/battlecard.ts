@@ -70,7 +70,7 @@ export interface AE_BATTLECARD {
   proof_points: string[];
   compete_aggressively_when: string[];
   signal_trace: SignalTrace[];
-  strategic_overlap?: string[];
+  strategic_overlap?: Record<string, "yes" | "no" | "partial">;
   strategic_relationship?: string;
   why_this_appears_in_deals?: string[];
   do_not_compete_when?: string[];
@@ -98,6 +98,8 @@ export interface Signal {
   evidence?: string; // Cleaned sentence containing the signal
   citationIds: string[];
   normalizedType?: string;
+  authorityScore?: number;
+  corroborationCount?: number;
 }
 
 export interface Battlecard {

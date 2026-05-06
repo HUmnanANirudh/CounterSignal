@@ -18,8 +18,8 @@ export const SIGNAL_NORMALIZATIONS: Record<string, NormalizedSignalType> = {
   "unresponsive": "support_issue",
   "buggy": "quality_issue",
   "broken": "quality_issue",
-  "reliability": "reliability_issue",
-  "outage": "reliability_issue",
+  "reliability": "reliability",
+  "outage": "reliability",
   "payout delay": "payout_issue",
   "account freeze": "account_issue",
   "refund": "refund_issue",
@@ -75,19 +75,11 @@ export function classifySignalType(text: string, normalizedType?: string): Norma
     return normalizedType as NormalizedSignalType;
   }
 
-  const lower = text.toLowerCase();
+  // Check negative signals first
+  const negative = classifyNegativeSignal(text);
+  if (negative !== "general") return negative;
 
-  if (/fraud|security|compliance|data|credential/i.test(lower)) {
-    if (NEGATIVE_CONTEXT.test(lower) || /scam|breach|leak|class.*action|lawsuit/i.test(lower)) {
-      return "trust_risk";
-    }
-  }
-  if (/₹\s*\d+\s*(?:cr|crore)|money.*launder|sanction.*popup/i.test(lower)) return "trust_risk";
-  
-  if (/rbi|regulatory|ban|suspended|compliance.*issue|penalty|fine|sec.*fine|enforcement.*action|investigation/i.test(lower)) return "regulatory";
-  if (/loss|declin|revenue.*drop|widen.*loss|net.*loss|operating.*loss|default|bankrupt|insolven/i.test(lower)) return "financial_health";
-  if (/outage|service.*disrupt|downtime|system.*fail|breach|leak/i.test(lower)) return "reliability";
-  if (/pivot|restructur|shut.*down|close.*operation|layoff/i.test(lower)) return "strategy_drift";
+  const lower = text.toLowerCase();
   if (/high.*fee|expensive|overpriced|hidden.*cost|pricing.*issue|costly/i.test(lower)) return "pricing_complaint";
   if (/support.*delay|poor.*support|unresponsive|support.*issue/i.test(lower)) return "support_issue";
   if (/integration.*complex|difficult.*integration|api.*issue/i.test(lower)) return "integration_issue";
