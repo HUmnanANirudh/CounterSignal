@@ -1,11 +1,4 @@
-import { BFSICategory } from "@/types/entity";
-
-export interface CategoryStrategy {
-  validate: string;
-  acknowledge: string;
-  reframe: string;
-  specify: string;
-}
+import { BFSICategory,CategoryStrategy } from "@/types";
 
 export const CATEGORY_STRATEGIES: Record<BFSICategory, CategoryStrategy> = {
   // 1. PAYMENT LAYER

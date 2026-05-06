@@ -127,3 +127,10 @@ export const CLASSIFICATION_SIGNALS = {
   broker: ["broker", "zerodha", "groww", "upstox", "trading", "stocks", "demat"],
   marketplace: ["marketplace", "loan marketplace", "comparison", "paisabazaar", "bankbazaar"],
 } as const;
+
+export interface CategoryStrategy {
+  validate: string;
+  acknowledge: string;
+  reframe: string;
+  specify: string;
+}

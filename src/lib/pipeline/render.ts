@@ -182,13 +182,12 @@ export function renderMarkdown(battlecard: Battlecard): string {
     }
   }
 
-  // Pricing (clean, single line)
-  if (battlecard.pricing_posture) {
+  // Pricing (only show if clear/public to reduce noise)
+  if (battlecard.pricing_posture && battlecard.pricing_posture.opacity === 'clear') {
     addSection("Pricing");
     const model = sanitize(battlecard.pricing_posture.model);
     const entry = sanitize(battlecard.pricing_posture.entryPrice);
-    const opacity = battlecard.pricing_posture.opacity === 'clear' ? '🟢 Clear' : '🔴 Opaque';
-    add(`Model: ${model} | Entry: ${entry} | ${opacity}`);
+    add(`Model: ${model} | Entry: ${entry} |  Clear`);
   }
 
   // Landmines (max 3, clean questions)
