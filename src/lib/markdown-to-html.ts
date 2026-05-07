@@ -57,6 +57,46 @@ export function markdownToHtml(md: string): string {
       continue;
     }
 
+    // Table detection
+    if (line.trim().startsWith("|")) {
+      // Peek ahead to see if it's a table (check for separator line)
+      const nextLine = lines[i + 1];
+      if (nextLine && nextLine.trim().startsWith("|") && /^[|:-\s]+$/.test(nextLine.trim())) {
+        closeList();
+        html.push('<table style="width:100%; border-collapse: collapse; margin: 1rem 0;">');
+        
+        const getCells = (l: string) => {
+          const cells = l.trim().split("|");
+          // Remove first and last empty elements if they exist (from leading/trailing |)
+          if (cells[0] === "") cells.shift();
+          if (cells[cells.length - 1] === "") cells.pop();
+          return cells.map(c => c.trim());
+        };
+
+        // Header
+        const headers = getCells(line);
+        html.push("<thead><tr>");
+        headers.forEach(h => html.push(`<th style="border: 1px solid #ddd; padding: 8px; text-align: left; background-color: #f2f2f2;">${inlineFormat(h)}</th>`));
+        html.push("</tr></thead>");
+        
+        // Skip separator line
+        i++;
+        
+        // Body
+        html.push("<tbody>");
+        while (i + 1 < lines.length && lines[i + 1].trim().startsWith("|")) {
+          i++;
+          const rowCells = getCells(lines[i]);
+          html.push("<tr>");
+          rowCells.forEach(c => html.push(`<td style="border: 1px solid #ddd; padding: 8px;">${inlineFormat(c)}</td>`));
+          html.push("</tr>");
+        }
+        html.push("</tbody>");
+        html.push("</table>");
+        continue;
+      }
+    }
+
     // Regular paragraph
     closeList();
     html.push(`<p>${inlineFormat(line)}</p>`);

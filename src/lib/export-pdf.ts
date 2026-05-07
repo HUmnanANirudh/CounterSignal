@@ -3,12 +3,20 @@
 import { jsPDF } from "jspdf";
 import { PDFOptions } from "@/types";
 
-const PT_TO_MM = 0.3528;
 const LINE_SPACING = 1.5;
 const LINE_GAP = 2;    
 const BLOCK_GAP = 4;    
 const SECTION_GAP = 7; 
 const MARGIN = 20;
+const PT_TO_MM = 0.3528;
+
+const STATUS_COLORS: Record<string, [number, number, number]> = {
+  "[OK]": [34, 197, 94],   // Green
+  "[!]": [239, 68, 68],    // Red
+  "[~]": [234, 179, 8],    // Yellow
+  "[-]": [59, 130, 246],   // Blue
+  "[WARN]": [249, 115, 22] // Orange
+};
 
 function lh(fontSize: number): number {
   return fontSize * PT_TO_MM * LINE_SPACING;
@@ -94,7 +102,26 @@ export function exportHtmlToPdf(html: string, options: PDFOptions = {}): void {
     ensureSpace(blockHeight);
 
     for (let i = 0; i < lines.length; i++) {
-      doc.text(lines[i], MARGIN + indent, y);
+      const line = lines[i];
+      let currentX = MARGIN + indent;
+
+      // Split by any of the status tags
+      const parts = line.split(/(\[OK\]|\[!\]|\[~\]|\[-\]|\[WARN\])/);
+
+      for (const part of parts) {
+        const color = STATUS_COLORS[part];
+        if (color) {
+          // Draw dot
+          const dotY = y - (fontSize * PT_TO_MM * 0.35);
+          doc.setFillColor(...color);
+          doc.circle(currentX + 1.2, dotY, 0.8, "F");
+          currentX += 4; // Space for the dot
+        } else if (part) {
+          // Regular text
+          doc.text(part, currentX, y);
+          currentX += doc.getTextWidth(part);
+        }
+      }
       y += lineHeight;
     }
 
@@ -169,9 +196,22 @@ export function exportHtmlToPdf(html: string, options: PDFOptions = {}): void {
 
           ensureSpace(blockHeight);
 
+          // Check for status tag on first line
+          const statusMatch = wrappedLines[0].match(/^(\[OK\]|\[!\]|\[~\]|\[-\]|\[WARN\])\s*(.*)/);
+          let bulletColor: [number, number, number] = [100, 100, 100];
+          
+          if (statusMatch) {
+            const tag = statusMatch[1];
+            const color = STATUS_COLORS[tag];
+            if (color) {
+              bulletColor = color;
+              wrappedLines[0] = statusMatch[2]; // Remove tag for display
+            }
+          }
+
           const bulletY = y - (lineHeight / 2) + 1.5;
-          doc.setFillColor(100, 100, 100);
-          doc.circle(MARGIN + 2.5, bulletY, 0.6, "F");
+          doc.setFillColor(...bulletColor);
+          doc.circle(MARGIN + 2.5, bulletY, 0.8, "F");
 
           doc.setTextColor(45, 45, 45);
           for (const line of wrappedLines) {
@@ -193,6 +233,97 @@ export function exportHtmlToPdf(html: string, options: PDFOptions = {}): void {
           renderTextBlock(text, 9, "normal", [55, 55, 55]);
         }
         y += LINE_GAP;
+        break;
+      }
+      case "table": {
+        const thead = el.querySelector("thead");
+        const tbody = el.querySelector("tbody");
+        const headerRows = thead ? Array.from(thead.querySelectorAll("tr")) : [];
+        const bodyRows = tbody ? Array.from(tbody.querySelectorAll("tr")) : [];
+        const allRows = [...headerRows, ...bodyRows];
+
+        if (allRows.length === 0) break;
+
+        const colCount = allRows[0].querySelectorAll("th, td").length;
+        const colWidth = contentWidth / colCount;
+        const tableFontSize = 8;
+        const tableLineHeight = lh(tableFontSize);
+        
+        y += BLOCK_GAP;
+
+        for (let r = 0; r < allRows.length; r++) {
+          const cells = Array.from(allRows[r].querySelectorAll("th, td"));
+          
+          // Calculate row height based on the tallest cell
+          let maxCellLines = 1;
+          const cellTextLines: string[][] = [];
+          
+          cells.forEach(cell => {
+            const cellText = stripEmoji(cell.textContent || "");
+            const lines = doc.splitTextToSize(cellText, colWidth - 4);
+            cellTextLines.push(lines);
+            if (lines.length > maxCellLines) maxCellLines = lines.length;
+          });
+
+          const rowHeight = (maxCellLines * tableLineHeight) + 4;
+          ensureSpace(rowHeight);
+
+          const cellYTop = y;
+
+          // Draw cell borders and text
+          for (let c = 0; c < cells.length; c++) {
+            const cellX = MARGIN + c * colWidth;
+            const isHeader = cells[c].tagName.toLowerCase() === "th";
+            
+            // Background for header
+            if (isHeader) {
+              doc.setFillColor(245, 245, 245);
+              doc.rect(cellX, cellYTop, colWidth, rowHeight, "F");
+              doc.setFont("helvetica", "bold");
+            } else {
+              doc.setFont("helvetica", "normal");
+            }
+
+            // Border
+            doc.setDrawColor(220, 220, 220);
+            doc.setLineWidth(0.1);
+            doc.rect(cellX, cellYTop, colWidth, rowHeight, "S");
+
+            // Text
+            doc.setFontSize(tableFontSize);
+            doc.setTextColor(40, 40, 40);
+            const lines = cellTextLines[c];
+            
+            // Center text vertically in cell
+            const textTotalHeight = lines.length * tableLineHeight;
+            const startTextY = cellYTop + (rowHeight - textTotalHeight) / 2 + (tableFontSize * PT_TO_MM);
+
+            for (let l = 0; l < lines.length; l++) {
+              const line = lines[l];
+              let currentX = cellX + 2;
+
+              // Split by any of the status tags
+              const parts = line.split(/(\[OK\]|\[!\]|\[~\]|\[-\]|\[WARN\])/);
+
+              for (const part of parts) {
+                const color = STATUS_COLORS[part];
+                if (color) {
+                  // Draw dot
+                  const dotY = startTextY + (l * tableLineHeight) - (tableFontSize * PT_TO_MM * 0.35);
+                  doc.setFillColor(...color);
+                  doc.circle(currentX + 1.2, dotY, 0.8, "F");
+                  currentX += 4; // Space for the dot
+                } else if (part) {
+                  // Regular text
+                  doc.text(part, currentX, startTextY + (l * tableLineHeight));
+                  currentX += doc.getTextWidth(part);
+                }
+              }
+            }
+          }
+          y += rowHeight;
+        }
+        y += BLOCK_GAP;
         break;
       }
       default: {
