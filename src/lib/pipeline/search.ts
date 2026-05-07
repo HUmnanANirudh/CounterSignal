@@ -17,8 +17,8 @@ import {
 
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 
-const MAX_PER_DOMAIN = 3;
-const MAX_TOTAL = 10;
+const MAX_PER_DOMAIN = 4;
+const MAX_TOTAL = 20;
 const MIN_AUTHORITY_THRESHOLD = 0.4;
 
 const LOW_QUALITY_PATTERNS = [
@@ -170,22 +170,26 @@ function selectDiversifiedResults(
 }
 
 export function buildSearchQueries(competitor: string): string[] {
-  // Core queries with ENTITY ANCHORING - force company name to appear in results
+  const currentYear = new Date().getFullYear();
+  const lastYear = currentYear - 1;
   return [
-    // Reddit/community sentiment (India-specific)
-    `site:reddit.com "${competitor}" india fintech`,
-    // Company introduction/news
-    `"introducing ${competitor}"`,
-    // Core: company overview with entity anchoring
-    `"${competitor}" fintech india`,
-    // Reviews (customer truths)
-    `site:g2.com OR site:capterra.com "${competitor}" review`,
-    // Startup news (signal sources) - anchored
-    `site:inc42.com OR site:entrackr.com OR site:yourstory.com "${competitor}"`,
-    // Deep fintech coverage - anchored
-    `site:medianama.com OR site:the-ken.com "${competitor}"`,
-    // Financial news - anchored
-    `site:moneycontrol.com OR site:bloomberg.com "${competitor}" fintech`,
+  // 1. ENTITY ANCHOR — Establish who they actually are before anything else
+`"${competitor}" (fintech OR payments OR banking) india (founded OR "how it works" OR "what we do" OR "series" OR "raised") site:crunchbase.com OR site:tracxn.com OR site:linkedin.com OR site:zaubacorp.com OR site:tofler.in`,
+
+// 2. DEEP EDITORIAL — Best single source for BFSI context, strategy, and business model
+`site:medianama.com OR site:the-ken.com OR site:inc42.com OR site:entrackr.com OR site:yourstory.com OR site:moneycontrol.com OR site:livemint.com OR site:economictimes.indiatimes.com OR site:businessstandard.com "${competitor}"`,
+
+// 3. REGULATORY & LAUNCH SIGNALS — What they've built or been approved for recently
+`"${competitor}" ("RBI" OR "NPCI" OR "SEBI" OR "IRDAI" OR "licence" OR "approval" OR "launches" OR "partnership" OR "MoU") after:${lastYear}-01-01 site:rbi.org.in OR site:medianama.com OR site:entrackr.com OR site:inc42.com`,
+
+// 4. REAL CUSTOMER SENTIMENT — Actual friction, not templated noise
+`"${competitor}" (review OR complaint OR feedback OR experience) (onboarding OR support OR compliance OR "not working" OR "issue" OR "delay" OR "fraud") site:reddit.com OR site:g2.com OR site:trustpilot.com OR site:mouthshut.com OR site:ambitionbox.com OR site:glassdoor.com OR site:producthunt.com`,
+
+// 5. PRICING & COMMERCIAL MODEL — MDR, fees, bundling signals
+`"${competitor}" (pricing OR "MDR" OR fees OR "commission" OR "subscription" OR "rate card" OR "per transaction" OR "revenue model") site:inc42.com OR site:entrackr.com OR site:medianama.com OR site:tracxn.com OR site:yourstory.com`,
+
+// 6. COMPETITIVE POSITIONING — How the market sees them vs others
+`"${competitor}" (vs OR alternative OR competitor OR "compared to" OR "instead of") india fintech (2025 OR 2026) site:reddit.com OR site:g2.com OR site:stackshare.io OR site:slashdot.org OR site:getapp.com OR site:softwareadvice.com`,
   ];
 }
 
@@ -265,7 +269,7 @@ export async function search(competitor: string): Promise<SearchResult> {
     tvly.search(query, {
       searchDepth: "basic", // Use basic for faster results
       topic: "finance",
-      maxResults: 6, // Reduced for latency
+      maxResults: 10, // Increased to capture more signals
       includeAnswer: "basic", // Reduced for latency
       includeImages: false,
     }).then((result) => {

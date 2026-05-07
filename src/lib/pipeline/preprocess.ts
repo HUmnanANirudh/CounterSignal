@@ -1,7 +1,7 @@
 import type { PreprocessedData,NegativeSignalType } from "@/types";
 import { classifyNegativeSignal } from "./utils/signal-classify";
 
-const MAX_TOKENS = 6000;
+const MAX_TOKENS = 12000;
 const PRICING_PATTERNS = [
   /\$[\d,]+(?:\/month|\/mo|\/year|\/transaction|\/user)?/gi,
   /[\d,]+(?:\/month|\/mo|\/year|\/transaction|\/user)/gi,
@@ -81,7 +81,7 @@ export function preprocess(rawContent: string): PreprocessedData {
       }
     }
 
-    const datePattern = /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s,]+(?:20|19)\d{2}|\d{1,2}[\/\-]\d{1,2}[\/\-](?:20|19)\d{2}|\d+\s+(?:days|weeks|months)\s+ago|just (?:released|launched|announced)|(?:launched|announced|released)\s+(?:in|on)\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/gi;
+    const datePattern = /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s,]+(?:20|19)\d{2}|\d{1,2}[\/\-]\d{1,2}[\/\-](?:20|19)\d{2}|\d+\s+(?:days|weeks|months)\s+ago|just (?:released|launched|announced)|(?:launched|announced|released)\s+(?:in|on)\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|(?:\d{4})/gi;
     const dateMatches = s.match(datePattern);
     if (dateMatches) {
       dates.push(...dateMatches);
@@ -96,10 +96,20 @@ export function preprocess(rawContent: string): PreprocessedData {
     index === self.findIndex(s => s.text === signal.text)
   );
 
+  const launch_sentences: string[] = [];
+  for (const sentence of sentences) {
+    const s = sentence.trim();
+    const lower = s.toLowerCase();
+    if (lower.includes("launch") || lower.includes("announced") || lower.includes("partnership") || lower.includes("introduces") || lower.includes("raised") || lower.includes("funding")) {
+      launch_sentences.push(s);
+    }
+  }
+
   const prioritizedContent = [
     ...pricing_candidates.slice(0, 10),
-    ...uniqueNegativeSignals.map(s => s.text).slice(0, 10),
+    ...uniqueNegativeSignals.map(s => s.text).slice(0, 15),
     ...complaint_sentences.slice(0, 10),
+    ...launch_sentences.slice(0, 15),
     ...review_blocks.slice(0, 8),
     ...feature_mentions.slice(0, 6),
   ].join("\n");
@@ -109,9 +119,9 @@ export function preprocess(rawContent: string): PreprocessedData {
     review_blocks: review_blocks.slice(0, 8),
     complaint_sentences: complaint_sentences.slice(0, 10),
     feature_mentions: feature_mentions.slice(0, 6),
-    dates: dates.slice(0, 8),
+    dates: dates.slice(0, 15),
     raw_content: truncateToTokens(prioritizedContent, MAX_TOKENS),
-    negative_signals: uniqueNegativeSignals.slice(0, 10),
+    negative_signals: uniqueNegativeSignals.slice(0, 15),
   };
 }
 

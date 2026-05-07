@@ -58,7 +58,13 @@ export interface ExtractedIntelligence {
     do_not_compete_when: string[];
     why_this_appears_in_deals: string[];
   };
-  recent_moves?: Array<{ name: string; date: string }>;
+  recent_moves?: Array<{ 
+    name: string; 
+    date: string; 
+    type: import("./battlecard").EventType; 
+    strategic_relevance?: string; 
+    impact?: "high" | "medium" | "low" 
+  }>;
 }
 
 export interface ClassificationResult {

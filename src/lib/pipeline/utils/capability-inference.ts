@@ -46,12 +46,14 @@ const CAPABILITY_MAP: Record<string, {
     } as any
   },
   banking_compliance: {
-    requiredInfra: ["payment_orchestration"],
+    requiredInfra: ["core_banking_rails"], // Changed from payment_orchestration
     categoryBoost: {
-      payment_gateway: "native",
-      payment_aggregator: "native",
-      wallet: "native",
-      upi_app: "native",
+      neobanking_infra: "native",
+      banking_api_infra: "native",
+      payment_gateway: "partnered",
+      payment_aggregator: "partnered",
+      wallet: "indirect",
+      upi_app: "indirect",
     } as any
   },
   deposit_compliance: {

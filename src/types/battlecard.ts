@@ -19,10 +19,21 @@ export interface PricingPosture {
   opacity: "clear" | "opaque";
 }
 
+export type EventType =
+  | "product_launch"
+  | "regulatory_action"
+  | "partnership"
+  | "funding"
+  | "pricing_change"
+  | "license_update"
+  | "market_expansion"
+  | "compliance_event";
+
 export interface RecentMove {
   name: string;
   date: string;
   impact: "high" | "medium" | "low";
+  type: EventType;
   strategic_relevance?: string;
 }
 
@@ -100,8 +111,13 @@ export interface AE_BATTLECARD {
   strategic_relationship?: string;
   strategic_risks?: string[];
   recent_launches?: RecentMove[];
+  strategic_events?: RecentMove[];
   executive_signal?: string;
   pricing_framing?: string[];
+  customer_sentiment?: {
+    positives: string[];
+    negatives: string[];
+  };
   why_this_appears_in_deals?: string[];
   do_not_compete_when?: string[];
 }

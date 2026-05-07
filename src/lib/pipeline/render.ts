@@ -176,8 +176,8 @@ export function renderMarkdown(battlecard: Battlecard): string {
     }
   }
 
-  // 6. Recent Launches
-  addSection("Recent Launches");
+  // 6a. Recent Product / Platform Launches
+  addSection("Recent Product / Platform Launches");
   const validLaunches = (AE_BATTLECARD.recent_launches ?? []).filter(l => l.name && l.name !== "undefined");
   if (validLaunches.length > 0) {
     for (const move of validLaunches) {
@@ -193,17 +193,38 @@ export function renderMarkdown(battlecard: Battlecard): string {
     add("No major launch signals confidently identified.");
   }
 
+  // 6b. Regulatory & Strategic Events
+  const validEvents = (AE_BATTLECARD.strategic_events ?? []).filter(e => e.name && e.name !== "undefined");
+  if (validEvents.length > 0) {
+    addSection("Regulatory & Strategic Events");
+    for (const event of validEvents) {
+      add(`### ${event.name}`);
+      add(`Date: ${event.date}`);
+      add(`Type: ${event.type.replace('_', ' ').toUpperCase()}`);
+      if (event.strategic_relevance) {
+        add(`**Strategic Relevance:**`);
+        add(event.strategic_relevance);
+      }
+      add("");
+    }
+  }
+
   // 7. Customer Sentiment
   addSection(relMode === "SUPPLY_SIDE_PARTNER" ? "Customer / Market Sentiment" : "Customer Sentiment");
-  add(`**Positive Patterns:**`);
-  addBullet("Strong merchant familiarity and brand trust.");
-  addBullet("Reliable payment success rates in core regions.");
-  addBullet("Broad acceptance across SMB and retail segments.");
-  add("");
-  add(`**Negative Patterns:**`);
-  addBullet("Support responsiveness complaints during peak volumes.");
-  addBullet("Onboarding friction during manual compliance reviews.");
-  addBullet("Concerns around regulatory stability post-RBI actions.");
+  const sentiment = AE_BATTLECARD.customer_sentiment;
+  if (sentiment && (sentiment.positives.length > 0 || sentiment.negatives.length > 0)) {
+    if (sentiment.positives.length > 0) {
+      add(`**Positive Patterns:**`);
+      for (const p of sentiment.positives) addBullet(p);
+      add("");
+    }
+    if (sentiment.negatives.length > 0) {
+      add(`**Negative Patterns:**`);
+      for (const n of sentiment.negatives) addBullet(n);
+    }
+  } else {
+    add("*No specific customer sentiment signals identified from current market data.*");
+  }
 
   // 8. Strategic Risks
   if (AE_BATTLECARD.strategic_risks?.length) {
@@ -231,6 +252,12 @@ export function renderMarkdown(battlecard: Battlecard): string {
     add("");
     add(`**Why We Lose:**`);
     for (const lose of deduplicatePhrases(AE_BATTLECARD.why_we_lose).slice(0, 2)) { addBullet(lose); }
+    
+    if (AE_BATTLECARD.do_not_compete_when?.length) {
+      add("");
+      add(`**Walk-Away Conditions:**`);
+      for (const condition of AE_BATTLECARD.do_not_compete_when) { addBullet(condition); }
+    }
 
   } else if (relMode === "INDIRECT_COMPETITOR") {
     addSection("Strategic Opportunity");

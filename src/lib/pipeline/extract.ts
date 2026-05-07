@@ -146,26 +146,21 @@ export async function extract(
   const negativeSignalsInfo = preprocessed.negative_signals?.map(s => `[${s.type}] ${s.text}`).join("\n") || "None found";
 
   const prompt = `Extract fintech competitor data for "${competitor}". Return ONLY valid JSON.
+Extract ALL significant moves, product launches, regulatory events, and strategic updates identified in the data. Do not limit the count.
 
 CRITICAL RULES - VIOLATION = REJECTED OUTPUT:
-1. DIFFERENTIATORS: Must be product capabilities or GTM advantages, NOT credentials (funding, G2 ratings, unicorn status). E.g. "API-first architecture" NOT "unicorn status".
-2. TAGLINE: Must describe what the competitor actually does as a product, NOT generic descriptors. E.g. "Payment gateway for Indian businesses" NOT "a leading fintech platform".
-3. PRICING MODEL: Must be ONE of: subscription, transaction, transaction+MDR, transaction+volume-linked, freemium, custom, unknown. For wallets/gateways use "transaction+MDR" not just "transaction".
-4. ENTRY PRICE:
-   - For transaction models: must be percentage + fixed fee (e.g., "2.9% + ₹0.30"). NEVER a fixed dollar amount alone.
-   - If no clear pricing found: set to "opaque". Do NOT guess.
-5. CATEGORIES MUST BE SEPARATE: payments pricing, issuing fees, and subscription plans are DIFFERENT. Never merge them.
-6. INVALID PATTERNS (will cause rejection):
-   - "9%" or "8%" without specific context (Stripe doesn't publish these rates)
-   - Any price with "capped" that includes a percentage (e.g., "8% capped at $5")
-   - Multiple conflicting dollar amounts in entryPrice
-
-7. CUSTOMER TRUTHS MUST INCLUDE: Include any fraud incidents, regulatory issues, financial instability signals as keyComplaints. Example: "₹40Cr fraud incident" should appear in keyComplaints, not just negatives.
-8. REVIEW SENTIMENT INTERPRETATION: 3-3.9 stars = "moderate/mixed sentiment" NOT "high satisfaction". 4+ stars = "positive sentiment". Below 3 = "negative sentiment". Do not overstate satisfaction.
-9. CUSTOMER TRUTHS MUST BE BUYER-OPERATIONAL TRUTHS, not generic review adjectives (like "Support" or "Ease of integration"). Example Strengths: "Simplifies global tax compliance", "Faster SaaS monetization launch". Example Weaknesses: "Merchant custody dependency", "Less checkout/payment ownership".
-10. STRATEGIC OVERLAP: Compare the competitor's capabilities with Blostem's. Blostem provides "banking-product infrastructure layer". Output format for overlap: "payment_acceptance -> none", "deposit_infra -> native", "treasury -> native", "lending -> partial", "compliance -> native", "orchestration -> native". (Wait, the instructions should tell the LLM how to score the COMPETITOR, not Blostem). 
-10. STRATEGIC OVERLAP: Map the COMPETITOR'S capabilities. Output ONLY these keys: "payment_routing", "deposit_lifecycle", "kyc_kyb", "banking_compliance", "tax_handling", "reg_orchestration". Values must be one of: "native", "partnered", "partial", "none".
-11. VARS ACKNOWLEDGE (Operational Implication): Transform their features into an executive-level operational implication. Example: Instead of "- Integrated fraud protection, - Tax compliance", write "Handles operational complexity around global SaaS payments and compliance".
+1. DIFFERENTIATORS: Must be product capabilities or GTM advantages, NOT credentials (funding, G2 ratings, unicorn status).
+2. DATES: Every move MUST have a date. Use the Year (e.g. "2024") if specific day/month is missing. Avoid "unknown" if a year can be inferred from context.
+3. PRICING: Extract specific numbers, tiers, and models if available. If no evidence, set entryPrice to "No verified public pricing structure identified..." and model to "unknown".
+4. CUSTOMER SENTIMENT: Extract specific operational patterns (e.g. "unresponsive support", "seamless integration") rather than generic adjectives.
+5. REVIEW INTERPRETATION: 3-3.9 stars = "moderate/mixed sentiment". 4+ stars = "positive". Below 3 = "negative".
+6. TARGET SEGMENTS: Be specific (e.g., "Series A fintechs") not generic ("Enterprise").
+7. CUSTOMER TRUTHS: Include fraud incidents, regulatory issues, and financial signals in keyComplaints.
+8. BUYER-OPERATIONAL TRUTHS: Strengths/Weaknesses must be operational (e.g. "Simplifies global tax" NOT "Easy to use").
+9. STRATEGIC OVERLAP: Map the COMPETITOR'S capabilities: "payment_routing", "deposit_lifecycle", "kyc_kyb", "banking_compliance", "tax_handling", "reg_orchestration". Values: "native", "partnered", "partial", "none".
+10. EVENT TAXONOMY: Categorize as: "product_launch", "regulatory_action", "partnership", "funding", "pricing_change", "license_update", "market_expansion", "compliance_event".
+11. STRATEGIC RELEVANCE: Provide analytical GTM implications, not news-dumps.
+12. VARS ACKNOWLEDGE: Transform features into executive-level operational implications.
 
 Data:
 ${processedData.raw_content.slice(0, MAX_CONTEXT_CHARS)}
@@ -176,7 +171,7 @@ Reviews: ${reviewInfo}
 Negative signals (fraud/regulatory/financial): ${negativeSignalsInfo}
 
 JSON (only one model, one entryPrice):
-{"positioning":{"tagline":"string","targetSegments":[],"differentiators":[]},"pricing_posture":{"model":"string","entryPrice":"string","tiers":[],"opacity":"clear|opaque"},"recent_moves":[],"customer_truths":{"positives":[],"negatives":[],"keyComplaints":[]},"strategic_overlap":{"payment_routing":"native|partnered|partial|none","deposit_lifecycle":"native|partnered|partial|none","kyc_kyb":"native|partnered|partial|none","banking_compliance":"native|partnered|partial|none","tax_handling":"native|partnered|partial|none","reg_orchestration":"native|partnered|partial|none"},"decision_orientation":{"compete_aggressively_when":[],"do_not_compete_when":[],"why_this_appears_in_deals":[]},"VARS":{"validate":"string","acknowledge":"string"}}
+{"positioning":{"tagline":"string","targetSegments":[],"differentiators":[]},"pricing_posture":{"model":"string","entryPrice":"string","tiers":[],"opacity":"clear|opaque"},"recent_moves":[{"name":"string","date":"string","impact":"high|medium|low","type":"product_launch|regulatory_action|partnership|funding|pricing_change|license_update|market_expansion|compliance_event","strategic_relevance":"string"}],"customer_truths":{"positives":[],"negatives":[],"keyComplaints":[]},"strategic_overlap":{"payment_routing":"native|partnered|partial|none","deposit_lifecycle":"native|partnered|partial|none","kyc_kyb":"native|partnered|partial|none","banking_compliance":"native|partnered|partial|none","tax_handling":"native|partnered|partial|none","reg_orchestration":"native|partnered|partial|none"},"decision_orientation":{"compete_aggressively_when":[],"do_not_compete_when":[],"why_this_appears_in_deals":[]},"VARS":{"validate":"string","acknowledge":"string"}}
 
 Return ONLY the JSON object. No markdown, no explanation.`;
   for (let attempt = 0; attempt <= EXTRACTION_MAX_RETRIES; attempt++) {

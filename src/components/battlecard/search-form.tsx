@@ -17,7 +17,7 @@ export function SearchForm({ value, onChange, onSubmit, isLoading }: SearchFormP
         disabled={isLoading}
       />
       <Button onClick={() => value.trim() && onSubmit(value.trim())} disabled={isLoading || !value.trim()}>
-        {isLoading ? "Searching..." : "Search"}
+        {isLoading ? "Generating..." : "Generate"}
       </Button>
     </div>
   );
