@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { markdownToHtml } from "@/lib/markdown-to-html";
 import { exportHtmlToPdf } from "@/lib/export-pdf";
 import { BattlecardEditor } from "./battlecard-editor";
@@ -11,11 +11,6 @@ import { BattleCardViewProps } from "@/types";
 import { BattlecardSidebar } from "./battlecard-sidebar";
 
 export function BattleCardView({ competitor, markdown, data, isLoading }: BattleCardViewProps) {
-  const html = useMemo(() => {
-    if (!markdown) return "";
-    return markdownToHtml(markdown);
-  }, [markdown]);
-
   const [editedHtml, setEditedHtml] = useState("");
 
   const handleExportPdf = useCallback(
@@ -34,7 +29,7 @@ export function BattleCardView({ competitor, markdown, data, isLoading }: Battle
     return (
       <div className="flex flex-col lg:flex-row gap-6">
         <div className="flex-1 space-y-4 min-w-0">
-          <Card className="p-6 space-y-6 h-[600px] border-border/60">
+          <Card className="p-6 space-y-6 h-100 border-border/60">
             <div className="space-y-3">
               <Skeleton className="h-9 w-1/2" />
               <Skeleton className="h-4 w-1/4" />
@@ -102,7 +97,7 @@ export function BattleCardView({ competitor, markdown, data, isLoading }: Battle
           Enter a competitor name or press the <kbd className="text-sm mx-2">↵</kbd> to generate a battlecard
         </p>
       </Card>
-    );``
+    );
   }
 
   return (

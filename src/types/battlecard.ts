@@ -1,4 +1,4 @@
-import { RelationshipMode, StackPosition } from "./entity";
+import { RelationshipMode } from "./entity";
 
 export interface PricingTier {
   name: string;
