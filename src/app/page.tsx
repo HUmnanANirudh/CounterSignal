@@ -33,6 +33,7 @@ export default function Home() {
         <BattleCardView
           competitor={competitor}
           markdown={battlecard.data?.markdown || ""}
+          data={battlecard.data?.data}
           isLoading={battlecard.isPending}
         />
       </div>

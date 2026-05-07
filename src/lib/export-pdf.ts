@@ -11,11 +11,12 @@ const MARGIN = 20;
 const PT_TO_MM = 0.3528;
 
 const STATUS_COLORS: Record<string, [number, number, number]> = {
-  "[OK]": [34, 197, 94],   // Green
-  "[!]": [239, 68, 68],    // Red
-  "[~]": [234, 179, 8],    // Yellow
-  "[-]": [59, 130, 246],   // Blue
-  "[WARN]": [249, 115, 22] // Orange
+  "[OK]": [34, 197, 94],  
+  "[!]": [239, 68, 68],    
+  "[~]": [234, 179, 8],    
+  "[-]": [59, 130, 246],   
+  "[WARN]": [249, 115, 22],
+  "[IND]": [156, 163, 175] 
 };
 
 function lh(fontSize: number): number {
@@ -31,6 +32,7 @@ function stripEmoji(text: string): string {
     .replace(/✅/g, "[OK]")
     .replace(/❌/g, "[X]")
     .replace(/🔵/g, "[-]")
+    .replace(/⚪/g, "[IND]")
     .replace(
       /[\u{1F000}-\u{1FFFF}]|[\u{2600}-\u{27BF}]|[\u{FE00}-\u{FE0F}]|[\u{200D}]|[\u{20E3}]|[\u{E0020}-\u{E007F}]/gu,
       ""
@@ -106,7 +108,7 @@ export function exportHtmlToPdf(html: string, options: PDFOptions = {}): void {
       let currentX = MARGIN + indent;
 
       // Split by any of the status tags
-      const parts = line.split(/(\[OK\]|\[!\]|\[~\]|\[-\]|\[WARN\])/);
+      const parts = line.split(/(\[OK\]|\[!\]|\[~\]|\[-\]|\[WARN\]|\[IND\])/);
 
       for (const part of parts) {
         const color = STATUS_COLORS[part];
@@ -197,7 +199,7 @@ export function exportHtmlToPdf(html: string, options: PDFOptions = {}): void {
           ensureSpace(blockHeight);
 
           // Check for status tag on first line
-          const statusMatch = wrappedLines[0].match(/^(\[OK\]|\[!\]|\[~\]|\[-\]|\[WARN\])\s*(.*)/);
+          const statusMatch = wrappedLines[0].match(/^(\[OK\]|\[!\]|\[~\]|\[-\]|\[WARN\]|\[IND\])\s*(.*)/);
           let bulletColor: [number, number, number] = [100, 100, 100];
           
           if (statusMatch) {
@@ -303,7 +305,7 @@ export function exportHtmlToPdf(html: string, options: PDFOptions = {}): void {
               let currentX = cellX + 2;
 
               // Split by any of the status tags
-              const parts = line.split(/(\[OK\]|\[!\]|\[~\]|\[-\]|\[WARN\])/);
+              const parts = line.split(/(\[OK\]|\[!\]|\[~\]|\[-\]|\[WARN\]|\[IND\])/);
 
               for (const part of parts) {
                 const color = STATUS_COLORS[part];

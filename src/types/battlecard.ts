@@ -1,3 +1,5 @@
+import { RelationshipMode, StackPosition } from "./entity";
+
 export interface PricingTier {
   name: string;
   price: string;
@@ -21,6 +23,7 @@ export interface RecentMove {
   name: string;
   date: string;
   impact: "high" | "medium" | "low";
+  strategic_relevance?: string;
 }
 
 export interface CustomerTruths {
@@ -63,8 +66,6 @@ export interface PersonaObjection {
   landmine: string;
 }
 
-export type RelationshipMode = "displace" | "coexist" | "integrate" | "supply" | "distribute_through";
-
 export interface MarketRelationshipModel {
   primary: RelationshipMode;
   secondary: RelationshipMode[];
@@ -97,6 +98,10 @@ export interface AE_BATTLECARD {
     confidence: number;
   }>;
   strategic_relationship?: string;
+  strategic_risks?: string[];
+  recent_launches?: RecentMove[];
+  executive_signal?: string;
+  pricing_framing?: string[];
   why_this_appears_in_deals?: string[];
   do_not_compete_when?: string[];
 }
@@ -141,6 +146,8 @@ export interface Battlecard {
   pricing_posture: PricingPosture;
   recent_moves: RecentMove[];
   customer_truths: CustomerTruths;
+  relationshipMode: RelationshipMode;
+  stackPosition: "consumer_layer" | "distribution_layer" | "infra_layer" | "issuer_layer" | "unknown";
 
   VARS_layer: VARSLayer;
   objection_handling: ObjectionHandling[];

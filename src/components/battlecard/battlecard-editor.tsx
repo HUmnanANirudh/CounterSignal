@@ -14,8 +14,6 @@ export function BattlecardEditor({
 }: BattlecardEditorProps) {
   const [mode, setMode] = useState<EditorMode>("edit");
   const [content, setContent] = useState(markdown);
-
-  // Sync content when incoming markdown changes
   useEffect(() => {
     setContent(markdown);
   }, [markdown]);

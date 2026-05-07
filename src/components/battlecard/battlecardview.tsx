@@ -6,10 +6,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCallback, useMemo, useState } from "react";
 import { markdownToHtml } from "@/lib/markdown-to-html";
 import { exportHtmlToPdf } from "@/lib/export-pdf";
-import { BattlecardEditor } from "@/components/battlecard";
+import { BattlecardEditor } from "./battlecard-editor";
 import { BattleCardViewProps } from "@/types";
+import { BattlecardSidebar } from "./battlecard-sidebar";
 
-export function BattleCardView({ competitor, markdown, isLoading }: BattleCardViewProps) {
+export function BattleCardView({ competitor, markdown, data, isLoading }: BattleCardViewProps) {
   const html = useMemo(() => {
     if (!markdown) return "";
     return markdownToHtml(markdown);
@@ -31,15 +32,65 @@ export function BattleCardView({ competitor, markdown, isLoading }: BattleCardVi
 
   if (isLoading) {
     return (
-      <Card className="p-6 space-y-4">
-        <Skeleton className="h-8 w-3/4" />
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-2/3" />
-        <Separator />
-        <Skeleton className="h-4 w-1/2" />
-        <Skeleton className="h-20 w-full" />
-      </Card>
+      <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex-1 space-y-4 min-w-0">
+          <Card className="p-6 space-y-6 h-[600px] border-border/60">
+            <div className="space-y-3">
+              <Skeleton className="h-9 w-1/2" />
+              <Skeleton className="h-4 w-1/4" />
+            </div>
+            <Separator className="opacity-50" />
+            <div className="space-y-4">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+            <div className="space-y-4 pt-8">
+              <Skeleton className="h-7 w-1/3" />
+              <div className="space-y-3">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-5/6" />
+                <Skeleton className="h-4 w-4/6" />
+              </div>
+            </div>
+          </Card>
+        </div>
+        
+        <aside className="w-full lg:w-72 space-y-6">
+          <Card className="p-4 space-y-6 border-border/60">
+            <div className="space-y-2">
+              <Skeleton className="h-3 w-1/2 mb-4" />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-1/4" />
+                  <Skeleton className="h-7 w-full" />
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-1/4" />
+                  <Skeleton className="h-5 w-2/3" />
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-4 space-y-6 border-border/60">
+            <div className="space-y-2">
+              <Skeleton className="h-3 w-1/2 mb-4" />
+              <div className="space-y-6">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="flex justify-between">
+                      <Skeleton className="h-3 w-1/3" />
+                      <Skeleton className="h-3 w-1/12" />
+                    </div>
+                    <Skeleton className="h-1.5 w-full" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+        </aside>
+      </div>
     );
   }
 
@@ -55,12 +106,16 @@ export function BattleCardView({ competitor, markdown, isLoading }: BattleCardVi
   }
 
   return (
-    <div className="space-y-4">
-      <BattlecardEditor
-        onChange={setEditedHtml}
-        onExportPdf={handleExportPdf}
-        markdown={markdown}
-      />
+    <div className="flex flex-col lg:flex-row gap-6">
+      <div className="flex-1 space-y-4 min-w-0">
+        <BattlecardEditor
+          onChange={setEditedHtml}
+          onExportPdf={handleExportPdf}
+          markdown={markdown}
+        />
+      </div>
+
+      {data && <BattlecardSidebar data={data} />}
     </div>
   );
 }

@@ -16,9 +16,12 @@ import {
   buildInsufficientDataBattlecard,
   buildInternalProfileBattlecard,
   renderInternalProfileMarkdown,
+  renderRelevanceAssessmentMarkdown,
   isInternalCompany,
+  buildRelevanceAssessmentBattlecard,
 } from "./context-builders";
 import { getCategoryStrategy } from "./category-strategies";
+import { getRelationshipMode, getStackPosition } from "@/types/entity";
 
 export type { PipelineStage } from "@/types";
 
@@ -116,10 +119,23 @@ export async function runPipeline(
       return;
     }
 
+    // RELEVANCE GATE
+    const isRelevant = classification.confidence > 0.15 || classification.signals.length > 0;
+    if (!isRelevant) {
+      console.warn(`[Pipeline] RELEVANCE GATE: ${competitor} does not appear to be a BFSI entity (Confidence: ${classification.confidence})`);
+      const relevanceCard = buildRelevanceAssessmentBattlecard(competitor, classification);
+      setCache(competitor, relevanceCard);
+      callbacks.onChunk(renderRelevanceAssessmentMarkdown(relevanceCard));
+      callbacks.onComplete(relevanceCard);
+      return;
+    }
+
     // SUPPLY-SIDE PATH (issuers like NBFCs, FD providers)
     if (classification.marketRole === "partner") {
       console.log(`[Pipeline] ${competitor} is SUPPLY-SIDE (${classification.category}) — generating supply-side context`);
       const supplyCard = buildSupplySideBattlecard(competitor, classification.category, startTime, citations);
+      supplyCard.relationshipMode = "SUPPLY_SIDE_PARTNER";
+      supplyCard.stackPosition = getStackPosition(classification.category);
       setCache(competitor, supplyCard);
       callbacks.onChunk(renderMarkdown(supplyCard));
       callbacks.onComplete(supplyCard);
@@ -131,6 +147,8 @@ export async function runPipeline(
       console.log(`[Pipeline] ${competitor} is NOT a competitor (${classification.category}) — generating strategic context`);
       const { signals } = deriveSignals(preprocessed, citations);
       const strategicCard = buildNonCompetitorBattlecard(competitor, classification.category, startTime, citations, signals);
+      strategicCard.relationshipMode = getRelationshipMode(classification.category);
+      strategicCard.stackPosition = getStackPosition(classification.category);
       setCache(competitor, strategicCard);
       callbacks.onChunk(renderMarkdown(strategicCard));
       callbacks.onComplete(strategicCard);
@@ -225,6 +243,8 @@ export async function runPipeline(
         : extracted.pricing_posture,
       recent_moves,
       customer_truths: extracted.customer_truths || { positives: [], negatives: [], keyComplaints: [] },
+      relationshipMode: getRelationshipMode(classification.category),
+      stackPosition: getStackPosition(classification.category),
       VARS_layer: vars_layer,
       objection_handling: [],
       AE_BATTLECARD: ae_battlecard,

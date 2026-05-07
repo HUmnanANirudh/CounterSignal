@@ -45,7 +45,7 @@ const CAPABILITY_MAP: Record<string, {
       broker: "native",
     } as any
   },
-  payment_compliance: {
+  banking_compliance: {
     requiredInfra: ["payment_orchestration"],
     categoryBoost: {
       payment_gateway: "native",

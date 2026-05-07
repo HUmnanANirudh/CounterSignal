@@ -52,6 +52,8 @@ export function buildSupplySideBattlecard(
       negatives: [],
       keyComplaints: [],
     },
+    relationshipMode: "SUPPLY_SIDE_PARTNER",
+    stackPosition: "issuer_layer",
     VARS_layer: vars_layer,
     objection_handling: [],
     AE_BATTLECARD: {
@@ -120,6 +122,8 @@ export function buildNonCompetitorBattlecard(
       negatives: [],
       keyComplaints: [],
     },
+    relationshipMode: "INTEGRATION_TARGET",
+    stackPosition: "distribution_layer",
     VARS_layer: vars_layer,
     objection_handling: [],
     AE_BATTLECARD: {
@@ -195,6 +199,8 @@ export function buildInsufficientDataBattlecard(
       negatives: [],
       keyComplaints: [],
     },
+    relationshipMode: "DIRECT_COMPETITOR",
+    stackPosition: "unknown",
     VARS_layer: {
       validate: `Could not find sufficient information about ${competitor} to generate meaningful positioning.`,
       acknowledge: `Limited public data available for this entity.`,
@@ -265,6 +271,8 @@ export function buildInternalProfileBattlecard(competitor: string): Battlecard {
       negatives: [],
       keyComplaints: [],
     },
+    relationshipMode: "DIRECT_COMPETITOR",
+    stackPosition: "infra_layer",
     VARS_layer: {
       validate: "Blostem is your company — internal reference, not competitive intelligence.",
       acknowledge: "Blostem provides banking infrastructure for FDs and RDs.",
@@ -346,4 +354,75 @@ export function renderInternalProfileMarkdown(competitor: string): string {
 export function isInternalCompany(competitor: string): boolean {
   const lower = competitor.toLowerCase();
   return lower === "blostem" || lower === "rainmatter";
+}
+
+export function buildRelevanceAssessmentBattlecard(competitor: string, classification: any): Battlecard {
+  return {
+    competitor,
+    generatedAt: new Date().toISOString(),
+    researchDurationMs: 0,
+    positioning: {
+      tagline: `No meaningful overlap detected in BFSI infrastructure or fintech distribution.`,
+      targetSegments: [],
+      differentiators: [],
+    },
+    pricing_posture: { model: "N/A", entryPrice: "N/A", tiers: [], opacity: "opaque" },
+    recent_moves: [],
+    customer_truths: { positives: [], negatives: [], keyComplaints: [] },
+    VARS_layer: { validate: "", acknowledge: "", reframe: "", specify: "" },
+    objection_handling: [],
+    relationshipMode: "INTEGRATION_TARGET", 
+    stackPosition: "unknown",
+    AE_BATTLECARD: {
+      company_overview: `${competitor} is classified as ${classification.category}.`,
+      competitor_type: classification.category,
+      category_contrast: `Non-BFSI entity`,
+      quick_dismisses: [],
+      objection_handling: [],
+      why_we_win: [],
+      why_we_lose: [],
+      pricing_positioning: "N/A",
+      FUD_responses: [],
+      proof_points: [],
+      compete_aggressively_when: [],
+      signal_trace: [],
+      persona_objections: [],
+    },
+    sourceMap: {},
+    citations: [],
+    confidence: {
+      entityScore: classification.confidence,
+      capabilityScore: 0.0,
+      strategicScore: 0.0,
+      marketScore: 0.0,
+      evidenceScore: 0.1,
+      overallScore: classification.confidence * 0.2,
+      factors: ["relevance_gate_failed", `category: ${classification.category}`]
+    },
+    dataGaps: ["non_relevant_vertical"],
+  };
+}
+
+export function renderRelevanceAssessmentMarkdown(battlecard: Battlecard): string {
+  const lines: string[] = [];
+  lines.push(`# Company Relevance Assessment`);
+  lines.push(``);
+  lines.push(`**Entity:** ${battlecard.competitor}`);
+  lines.push(``);
+  lines.push(`**Classification:**`);
+  lines.push(`${battlecard.AE_BATTLECARD.competitor_type}`);
+  lines.push(``);
+  lines.push(`**Relationship to Blostem:**`);
+  lines.push(`No meaningful overlap detected in BFSI infrastructure, embedded finance, banking orchestration, or fintech distribution.`);
+  lines.push(``);
+  lines.push(`**Decision:**`);
+  lines.push(`Not suitable for competitive or ecosystem battlecard generation.`);
+  lines.push(``);
+  lines.push(`**Reasoning:**`);
+  lines.push(`- Different market vertical`);
+  lines.push(`- No shared banking workflow ownership`);
+  lines.push(`- No infrastructure adjacency`);
+  lines.push(`- No embedded finance overlap`);
+  
+  return lines.join("\n");
 }

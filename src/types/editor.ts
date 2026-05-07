@@ -1,4 +1,4 @@
-import type { Editor } from "@tiptap/react";
+import type { Battlecard } from "./battlecard";
 export interface BattlecardEditorProps {
   onChange?: (markdown: string) => void;
   onExportPdf?: (markdown: string) => void;
@@ -37,6 +37,7 @@ export type EditorMode = "edit" | "preview";
 export interface BattleCardViewProps {
   competitor: string;
   markdown: string;
+  data?: Battlecard;
   isLoading: boolean;
 }
 
@@ -49,5 +50,6 @@ export interface SearchFormProps {
 
 export interface BattlecardResult {
   markdown: string;
+  data?: Battlecard;
   error?: string;
 }
