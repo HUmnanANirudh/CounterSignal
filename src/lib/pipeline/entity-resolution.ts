@@ -56,34 +56,35 @@ export function resolveEntity(query: string): EntityResolutionResult {
 
   // If query is meaningful (not just noise), return resolved entity
   if (normalized.length >= 3) {
-    result.resolved = {
+    const resolved: ResolvedEntity = {
       canonicalName: query.trim(),
       aliases,
       domain: null,
       categoryHint: "payment_gateway", // Default - will be classified later
       confidence: result.entityConfidence,
-      classification: { primaryRole: "competitor", category: "payment_gateway" },
+      classification: { primaryRole: "direct_competitor", category: "payment_gateway" },
     };
-    result.match_sources.push(`scored:${normalized}`);
 
     // Check for common patterns to hint category
     if (/\b(groww|zerodha|upstox|broker|trading|stock)\b/i.test(query)) {
-      result.resolved.categoryHint = "broker";
-      result.resolved.classification = { primaryRole: "non_competitor", category: "broker" };
+      resolved.categoryHint = "broker";
+      resolved.classification = { primaryRole: "non_competitor", category: "broker" };
     } else if (/\b(shriram|bajaj|nbfc|loan|lending)\b/i.test(query)) {
-      result.resolved.categoryHint = "nbfc";
-      result.resolved.classification = { primaryRole: "supply_side", category: "nbfc" };
+      resolved.categoryHint = "nbfc";
+      resolved.classification = { primaryRole: "partner", category: "nbfc" };
     } else if (/\b(paytm|wallet|mobikwik)\b/i.test(query)) {
-      result.resolved.categoryHint = "wallet";
-      result.resolved.classification = { primaryRole: "competitor", category: "wallet" };
+      resolved.categoryHint = "wallet";
+      resolved.classification = { primaryRole: "direct_competitor", category: "wallet" };
     } else if (/\b(setu|decentro|yap|open\.?tech|banking.?api)\b/i.test(query)) {
-      result.resolved.categoryHint = "banking_api_infra";
-      result.resolved.classification = { primaryRole: "competitor", category: "banking_api_infra" };
+      resolved.categoryHint = "banking_api_infra";
+      resolved.classification = { primaryRole: "direct_competitor", category: "banking_api_infra" };
     } else if (/\b(dodo|paddle|merchant.?of.?record|mor)\b/i.test(query)) {
-      result.resolved.categoryHint = "merchant_of_record";
-      result.resolved.classification = { primaryRole: "competitor", category: "merchant_of_record" };
+      resolved.categoryHint = "merchant_of_record";
+      resolved.classification = { primaryRole: "direct_competitor", category: "merchant_of_record" };
     }
 
+    result.resolved = resolved;
+    result.match_sources.push(`scored:${normalized}`);
     return result;
   }
 

@@ -63,25 +63,38 @@ export interface PersonaObjection {
   landmine: string;
 }
 
+export type RelationshipMode = "displace" | "coexist" | "integrate" | "supply" | "distribute_through";
+
+export interface MarketRelationshipModel {
+  primary: RelationshipMode;
+  secondary: RelationshipMode[];
+  overlap_score: number;
+}
+
+export type CapabilityOrigin = "native" | "partnered" | "orchestrated" | "indirect" | "absent" | "unknown";
+
 export interface AE_BATTLECARD {
   company_overview: string;
   competitor_type: CompetitorType;
+  entity_role?: string; // e.g. "competitor", "supplier"
   category_contrast: string;
+  relationship_mode?: RelationshipMode; // Legacy field
+  relationship?: MarketRelationshipModel; // New compositional model
   quick_dismisses: string[];
-  objection_handling: AEObjectionHandling[]; // Legacy for backward compat
-  persona_objections: PersonaObjection[]; // New targeted content
+  objection_handling: AEObjectionHandling[];
+  persona_objections: PersonaObjection[];
   why_we_win: string[];
   why_we_lose: string[];
   pricing_positioning: string;
-  landmines: string[]; // Legacy
   FUD_responses: string[];
   proof_points: string[];
   compete_aggressively_when: string[];
   signal_trace: SignalTrace[];
   strategic_overlap?: Record<string, {
-    value: "native" | "partnered" | "partial" | "none";
+    exists: boolean;
+    ownership: CapabilityOrigin;
+    evidence: string;
     confidence: number;
-    evidence?: string;
   }>;
   strategic_relationship?: string;
   why_this_appears_in_deals?: string[];

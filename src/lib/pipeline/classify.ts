@@ -8,7 +8,8 @@ export { getPricingModelForCategory } from "@/types/entity";
 // Deterministic scoring classifier
 export function classifyCompetitor(
   competitorName: string,
-  content: string
+  content: string,
+  hint?: BFSICategory
 ): ClassificationResult {
   const combined = `${competitorName} ${content}`.toLowerCase();
   const scores: Record<string, number> = {};
@@ -26,12 +27,20 @@ export function classifyCompetitor(
     scores[category] = categoryScore;
   }
 
+  // Boost hint score significantly if it exists
+  if (hint && scores[hint] !== undefined) {
+    scores[hint] += 5; // Strong bias toward resolved entity hint
+  }
+
   // Find max score
   let maxScore = 0;
-  let maxCategory: BFSICategory = "payment_gateway"; // default
+  let maxCategory: BFSICategory = hint || "payment_gateway";
 
   for (const [category, score] of Object.entries(scores)) {
-    if (score > maxScore) {
+    if (score >= maxScore) {
+      // Favor hint on ties
+      if (score === maxScore && category !== hint) continue;
+      
       maxScore = score;
       maxCategory = category as BFSICategory;
     }
@@ -53,19 +62,19 @@ export function classifyCompetitor(
     }
   }
 
-  // Rule: Never return unknown if signals exist
-  if (maxScore < 0.5) {
-    maxCategory = "payment_gateway"; // Default fallback
+  // If no signals matched, use hint or default
+  if (maxScore < 0.2 && hint) {
+    maxCategory = hint;
   }
 
   const marketRole = getMarketRole(maxCategory);
 
   return {
     category: maxCategory,
-    confidence: maxScore > 0 ? Math.min(1, maxScore / 6) : 0.3,
+    confidence: maxScore > 0 ? Math.min(1, maxScore / 6) : (hint ? 0.5 : 0.3),
     signals: signals.slice(0, 6),
-    isCompetitor: marketRole === "competitor",
+    isCompetitor: marketRole === "direct_competitor" || marketRole === "indirect_competitor",
     marketRole,
-    reasoning: `Score: ${maxScore.toFixed(1)}, category: ${maxCategory}`,
+    reasoning: `Score: ${maxScore.toFixed(1)}, category: ${maxCategory}${hint ? ` (hint: ${hint})` : ""}`,
   };
 }

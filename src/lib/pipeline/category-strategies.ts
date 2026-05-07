@@ -215,5 +215,8 @@ export const CATEGORY_STRATEGIES: Record<BFSICategory, CategoryStrategy> = {
 };
 
 export function getCategoryStrategy(category: BFSICategory | string): CategoryStrategy {
-  return (CATEGORY_STRATEGIES as any)[category] || CATEGORY_STRATEGIES.banking_api_infra;
+  if (category in CATEGORY_STRATEGIES) {
+    return CATEGORY_STRATEGIES[category as BFSICategory];
+  }
+  return CATEGORY_STRATEGIES.banking_api_infra;
 }

@@ -288,10 +288,13 @@ export function calculateConfidence(
   factors.push(`Source Reliability (${Math.round(evidenceScore * 100)}%)`);
 
   // 3. CAPABILITY SCORE (Feature/overlap accuracy)
-  const signalVolumeScore = Math.min(signals.length / 10, 1);
-  const corroborationBonus = signals.reduce((acc, s) => acc + (s.corroborationCount || 1), 0) / 15;
-  const capabilityScore = Math.max(0.1, (signalVolumeScore * 0.7 + Math.min(corroborationBonus, 0.3)));
-  factors.push(`Capability Depth (${Math.round(capabilityScore * 100)}%)`);
+  // Refined Formula: capability_accuracy = evidence_coverage × capability_specificity × direct_source_support
+  const evidence_coverage = Math.min(signals.length / 10, 1);
+  const capability_specificity = extractionQuality;
+  const direct_source_support = Math.min(uniqueDomains / 5, 1);
+  
+  const capabilityScore = Math.max(0.05, (evidence_coverage * 0.4 * capability_specificity + direct_source_support * 0.3));
+  factors.push(`Capability Accuracy (${Math.round(capabilityScore * 100)}%)`);
 
   // 4. STRATEGIC SCORE (GTM reasoning/implication accuracy)
   // Higher when extraction is high quality and we have diverse evidence

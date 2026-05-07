@@ -313,7 +313,6 @@ export function sanitizeForAE(battlecard: AE_BATTLECARD): AE_BATTLECARD {
     pricing_positioning: stripFillers(sanitizeText(battlecard.pricing_positioning)),
 
     // Capped
-    landmines: sanitizeArray(battlecard.landmines || [], 3),
     FUD_responses: sanitizeArray(battlecard.FUD_responses || [], 3),
     proof_points: sanitizeArray(battlecard.proof_points || [], 3),
     compete_aggressively_when: sanitizeArray(battlecard.compete_aggressively_when || [], MAX_BULLETS),

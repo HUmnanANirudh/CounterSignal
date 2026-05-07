@@ -103,7 +103,7 @@ export async function runPipeline(
     const preprocessed = preprocess(rawContent);
 
     // Use classifyCompetitor (deterministic scoring model)
-    const classification = classifyCompetitor(competitor, rawContent);
+    const classification = classifyCompetitor(competitor, rawContent, resolution.resolved?.categoryHint);
 
     console.log(`[Pipeline] Classification: ${classification.category} (confidence: ${classification.confidence.toFixed(2)}) - marketRole: ${classification.marketRole}`);
 
@@ -117,7 +117,7 @@ export async function runPipeline(
     }
 
     // SUPPLY-SIDE PATH (issuers like NBFCs, FD providers)
-    if (classification.marketRole === "supply_side") {
+    if (classification.marketRole === "partner") {
       console.log(`[Pipeline] ${competitor} is SUPPLY-SIDE (${classification.category}) — generating supply-side context`);
       const supplyCard = buildSupplySideBattlecard(competitor, classification.category, startTime, citations);
       setCache(competitor, supplyCard);
@@ -181,9 +181,8 @@ export async function runPipeline(
     // MINIMAL GATING: Use strategicScore for GTM gating
     const suppressVARS = confidence.strategicScore < 0.3;
     const suppressObjections = confidence.strategicScore < 0.4;
-    const suppressLandmines = confidence.strategicScore < 0.3;
 
-    console.log(`[Pipeline] Confidence (Entity: ${confidence.entityScore}, Strategic: ${confidence.strategicScore}) — VARS: ${suppressVARS ? "suppressed" : "shown"}, Objections: ${suppressObjections ? "suppressed" : "shown"}, Landmines: ${suppressLandmines ? "suppressed" : "shown"}`);
+    console.log(`[Pipeline] Confidence (Entity: ${confidence.entityScore}, Strategic: ${confidence.strategicScore}) — VARS: ${suppressVARS ? "suppressed" : "shown"}, Objections: ${suppressObjections ? "suppressed" : "shown"}`);
 
     callbacks.onStageChange("primitives", "Generating deal primitives for AE use...");
     const raw_ae_battlecard = deriveDealPrimitives(extracted, signals, citations, competitor, classification.category);
@@ -211,9 +210,7 @@ export async function runPipeline(
     };
 
 
-    if (ae_battlecard.landmines) {
-      ae_battlecard.landmines = ae_battlecard.landmines.filter(lm => !lm.includes("undefined") && !lm.includes("[object Object]") && lm.length > 20);
-    }
+
 
     callbacks.onStageChange("rendering", "Rendering battlecard...");
     const recent_moves = extracted.recent_moves?.length ? filterRecentMoves(extracted.recent_moves) : [];

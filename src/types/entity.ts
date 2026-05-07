@@ -1,38 +1,52 @@
-export type BusinessModel = 
-  | "transaction_linked" 
-  | "api_saas" 
-  | "license_as_service" 
-  | "retail_monetization" 
+export type BusinessModel =
+  | "transaction_linked"
+  | "api_saas"
+  | "license_as_service"
+  | "retail_monetization"
   | "interbank_fee";
 
-export type CustodyModel = 
-  | "mor_custody" 
-  | "escrow_mediated" 
+export type ComplianceType = 
+  | "payment_compliance"
+  | "deposit_compliance"
+  | "lending_compliance"
+  | "custody_compliance"
+  | "tax_compliance";
+
+export type CustodyModel =
+  | "mor_custody"
+  | "escrow_mediated"
   | "none_direct_rail"
   | "not_applicable";
 
-export type InfraLayer = 
-  | "payment_orchestration" 
-  | "account_aggregation" 
-  | "core_banking_rails" 
-  | "card_issuance" 
+export type InfraLayer =
+  | "payment_orchestration"
+  | "account_aggregation"
+  | "core_banking_rails"
+  | "card_issuance"
   | "lending_ops"
   | "wealth_tech"
   | "collections_ops"
   | "identity_rails"
   | "unknown";
 
-export type MarketRelationship = 
+export type MarketRole = 
   | "direct_competitor"
   | "indirect_competitor"
-  | "substitute"
-  | "ecosystem_partner"
-  | "infrastructure_supplier"
+  | "partner"
+  | "non_competitor"
+  | "ecosystem_player";
+
+export type EntityRole = 
+  | "competitor"
+  | "supplier"
   | "distributor"
-  | "issuer";
+  | "benchmark"
+  | "ecosystem_player"
+  | "infrastructure_partner";
 
 export interface BFSICategoryMetadata {
-  role: "competitor" | "non_competitor" | "supply_side";
+  role: MarketRole;
+  entityRole: EntityRole;
   label: string;
   definition: string;
   pricing: string;
@@ -45,11 +59,12 @@ export interface BFSICategoryMetadata {
 }
 
 export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
-  // 1. PAYMENT LAYER
+  // 1. PAYMENT LAYER (transaction movement)
   payment_gateway: {
-    role: "competitor" as const,
-    label: "Payment Gateway (Checkout & Acquiring)",
-    definition: "payment orchestration & merchant acquiring layer",
+    role: "direct_competitor",
+    entityRole: "competitor",
+    label: "Payment Gateway",
+    definition: "checkout & acquiring layer",
     pricing: "transaction + MDR (volume-linked)",
     precedence: 130,
     businessModel: "transaction_linked",
@@ -57,13 +72,15 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     infraLayer: "payment_orchestration",
     primaryBuyer: "Product",
     signals: [
-      { pattern: /\b(payment\s*gateway|checkout|upi|mdr|transaction|payment\s*processor)\b/i, weight: 2 },
+      { pattern: /\b(payment\s*gateway|checkout|mdr|payment\s*processor)\b/i, weight: 2 },
       { pattern: /\b(razorpay|cashfree|stripe|payu|easebuzz|billdesk)\b/i, weight: 2 },
+      { pattern: /\b(payment\s*aggregation|merchant\s*onboarding|transaction\s*settlement)\b/i, weight: 1.5 },
     ]
   },
   payment_aggregator: {
-    role: "competitor" as const,
-    label: "Payment Aggregator (Merchant Aggregation)",
+    role: "indirect_competitor",
+    entityRole: "competitor",
+    label: "Payment Aggregator",
     definition: "merchant aggregation & settlement layer",
     pricing: "transaction + MDR (volume-linked)",
     precedence: 125,
@@ -76,8 +93,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   wallet: {
-    role: "competitor" as const,
-    label: "Wallet (Consumer Liquidity)",
+    role: "indirect_competitor",
+    entityRole: "competitor",
+    label: "Wallet",
     definition: "consumer liquidity & closed-loop payment layer",
     pricing: "transaction + MDR + wallet-based",
     precedence: 120,
@@ -91,8 +109,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   upi_app: {
-    role: "competitor" as const,
-    label: "UPI App (Consumer Interface)",
+    role: "indirect_competitor",
+    entityRole: "competitor",
+    label: "UPI App",
     definition: "consumer UPI interface layer",
     pricing: "UPI interchange + MDR",
     precedence: 115,
@@ -106,9 +125,10 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   payment_orchestration: {
-    role: "competitor" as const,
-    label: "Payment Orchestration (Routing & Logic)",
-    definition: "payment routing & checkout logic layer",
+    role: "direct_competitor",
+    entityRole: "competitor",
+    label: "Payment Orchestration",
+    definition: "payment routing & logic layer",
     pricing: "API usage-based (per-call)",
     precedence: 140,
     businessModel: "api_saas",
@@ -121,8 +141,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   merchant_of_record: {
-    role: "competitor" as const,
-    label: "Merchant of Record (Compliance Abstraction)",
+    role: "direct_competitor",
+    entityRole: "competitor",
+    label: "Merchant of Record",
     definition: "payment compliance & tax abstraction layer",
     pricing: "subscription + transaction markup",
     precedence: 145,
@@ -135,11 +156,12 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
       { pattern: /\b(dodo|paddle)\b/i, weight: 2 },
     ]
   },
-  // 2. BANKING INFRA
+  // 2. BANKING INFRA (direct battlefield)
   banking_api_infra: {
-    role: "competitor" as const,
-    label: "Banking API Infra (Access Layer)",
-    definition: "banking API & account access layer",
+    role: "direct_competitor",
+    entityRole: "infrastructure_partner",
+    label: "Banking API Infra",
+    definition: "banking API & account access layer (infra layer)",
     pricing: "API usage-based (per-call)",
     precedence: 150,
     businessModel: "api_saas",
@@ -153,9 +175,10 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   embedded_finance_infra: {
-    role: "competitor" as const,
-    label: "Embedded Finance Infra (Product Layer)",
-    definition: "embedded product issuance layer",
+    role: "direct_competitor",
+    entityRole: "competitor",
+    label: "Embedded Finance Infra",
+    definition: "embedded product issuance layer (Blostem-type)",
     pricing: "API usage-based (per-call)",
     precedence: 148,
     businessModel: "api_saas",
@@ -164,12 +187,12 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     primaryBuyer: "CTO",
     signals: [
       { pattern: /\b(embedded\s*finance|embedded\s*banking|BaaS)\b/i, weight: 2 },
-      { pattern: /\b(fintech\s*infra)\b/i, weight: 1 },
     ]
   },
   neobanking_infra: {
-    role: "competitor" as const,
-    label: "Neobanking Infra (Full Stack)",
+    role: "indirect_competitor",
+    entityRole: "competitor",
+    label: "Neobanking Infra",
     definition: "full-stack banking tech layer",
     pricing: "API usage-based (per-call)",
     precedence: 147,
@@ -182,11 +205,12 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
       { pattern: /\b(zeta|m2p)\b/i, weight: 2 },
     ]
   },
-  // 3. LENDING
+  // 3. LENDING / CREDIT
   nbfc: {
-    role: "supply_side" as const,
-    label: "NBFC (Capital & Licensing)",
-    definition: "lending, capital & regulatory licensing layer",
+    role: "partner",
+    entityRole: "supplier",
+    label: "NBFC",
+    definition: "capital & regulatory licensing layer (supply-side)",
     pricing: "interest spread + processing fees",
     precedence: 110,
     businessModel: "license_as_service",
@@ -196,12 +220,12 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     signals: [
       { pattern: /\b(NBFC|non\s*banking\s*finance|loan\s*provider)\b/i, weight: 2 },
       { pattern: /\b(shriram|bajaj\s*finance|muthoot)\b/i, weight: 2 },
-      { pattern: /\b(fixed\s*deposit|fd\s*interest|rd\s*interest)\b/i, weight: 1.5 },
     ]
   },
   lending_platform: {
-    role: "supply_side" as const,
-    label: "Lending Platform (Lifecycle Mgt)",
+    role: "non_competitor",
+    entityRole: "competitor",
+    label: "Lending Platform",
     definition: "loan lifecycle & management layer",
     pricing: "interest spread + processing fees",
     precedence: 105,
@@ -215,8 +239,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   loan_aggregator: {
-    role: "non_competitor" as const,
-    label: "Loan Aggregator (Lead Gen)",
+    role: "non_competitor",
+    entityRole: "distributor",
+    label: "Loan Aggregator",
     definition: "lead generation & loan discovery layer",
     pricing: "commission (CPA/CPL)",
     precedence: 100,
@@ -226,12 +251,12 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     primaryBuyer: "Founder",
     signals: [
       { pattern: /\b(loan\s*aggregator|loan\s*marketplace|credit\s*comparison)\b/i, weight: 2 },
-      { pattern: /\b(paisabazaar|bankbazaar)\b/i, weight: 2 },
     ]
   },
   bnpl: {
-    role: "non_competitor" as const,
-    label: "BNPL (POS Financing)",
+    role: "non_competitor",
+    entityRole: "competitor",
+    label: "BNPL",
     definition: "point-of-sale financing layer",
     pricing: "merchant fees + late fees",
     precedence: 95,
@@ -243,10 +268,11 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
       { pattern: /\b(BNPL|buy\s*now\s*pay\s*later|lazypay|simpl)\b/i, weight: 2 },
     ]
   },
-  // 4. WEALTH
+  // 4. WEALTH / INVESTMENT
   broker: {
-    role: "non_competitor" as const,
-    label: "Broker (Distribution)",
+    role: "non_competitor",
+    entityRole: "benchmark",
+    label: "Broker",
     definition: "securities distribution & trading layer",
     pricing: "brokerage (per-trade)",
     precedence: 90,
@@ -257,12 +283,12 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     signals: [
       { pattern: /\b(stockbroker|brokerage|trading\s*platform|demat)\b/i, weight: 2 },
       { pattern: /\b(zerodha|groww|upstox|angel\s*one)\b/i, weight: 2 },
-      { pattern: /\b(stocks|investing|mutual\s*funds?)\b/i, weight: 1 },
     ]
   },
   wealth_platform: {
-    role: "non_competitor" as const,
-    label: "Wealth Platform (Management)",
+    role: "non_competitor",
+    entityRole: "distributor",
+    label: "Wealth Platform",
     definition: "consumer wealth management layer",
     pricing: "AUM fee + transaction charges",
     precedence: 85,
@@ -276,8 +302,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   robo_advisor: {
-    role: "non_competitor" as const,
-    label: "Robo Advisor (Automation)",
+    role: "non_competitor",
+    entityRole: "competitor",
+    label: "Robo Advisor",
     definition: "automated investment advisory layer",
     pricing: "AUM fee + transaction charges",
     precedence: 80,
@@ -290,10 +317,11 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
       { pattern: /\b(smallcase)\b/i, weight: 1.5 },
     ]
   },
-  // 5. ASSET MANUFACTURERS
+  // 5. DEPOSIT / SAVINGS SUPPLY SIDE
   fd_provider: {
-    role: "supply_side" as const,
-    label: "FD Provider (Asset Manufacturer)",
+    role: "partner",
+    entityRole: "supplier",
+    label: "FD Provider",
     definition: "asset manufacturing (FD/RD) layer",
     pricing: "opaque",
     precedence: 70,
@@ -306,8 +334,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   rd_provider: {
-    role: "supply_side" as const,
-    label: "RD Provider (Asset Manufacturer)",
+    role: "partner",
+    entityRole: "supplier",
+    label: "RD Provider",
     definition: "asset manufacturing (RD) layer",
     pricing: "opaque",
     precedence: 65,
@@ -320,9 +349,10 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   issuer: {
-    role: "supply_side" as const,
-    label: "Issuer (Regulatory Holder)",
-    definition: "regulatory product issuance layer",
+    role: "partner",
+    entityRole: "supplier",
+    label: "Issuer",
+    definition: "regulatory product issuance layer (generic umbrella)",
     pricing: "opaque",
     precedence: 60,
     businessModel: "license_as_service",
@@ -333,10 +363,11 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
       { pattern: /\b(issuer|product\s*issuer)\b/i, weight: 2 },
     ]
   },
-  // 6. DISTRIBUTION
+  // 6. DISTRIBUTION LAYER
   marketplace: {
-    role: "non_competitor" as const,
-    label: "Marketplace (Discovery)",
+    role: "non_competitor",
+    entityRole: "distributor",
+    label: "Marketplace",
     definition: "financial product discovery layer",
     pricing: "commission (CPA/CPL)",
     precedence: 75,
@@ -346,12 +377,12 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     primaryBuyer: "Product",
     signals: [
       { pattern: /\b(marketplace|comparison\s*platform|aggregator)\b/i, weight: 2 },
-      { pattern: /\b(paisabazaar|bankbazaar|policybazaar)\b/i, weight: 2 },
     ]
   },
   distribution_api: {
-    role: "non_competitor" as const,
-    label: "Distribution API (Affiliate Infra)",
+    role: "non_competitor",
+    entityRole: "infrastructure_partner",
+    label: "Distribution API",
     definition: "affiliate & distribution infra layer",
     pricing: "opaque",
     precedence: 55,
@@ -364,8 +395,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   embedded_distribution: {
-    role: "non_competitor" as const,
-    label: "Embedded Distribution (Point of Need)",
+    role: "non_competitor",
+    entityRole: "distributor",
+    label: "Embedded Distribution",
     definition: "point-of-need distribution layer",
     pricing: "opaque",
     precedence: 50,
@@ -379,8 +411,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
   },
   // 7. INSURANCE
   insurtech: {
-    role: "non_competitor" as const,
-    label: "Insurtech (Insurance Infra)",
+    role: "non_competitor",
+    entityRole: "competitor",
+    label: "Insurtech",
     definition: "insurance infrastructure layer",
     pricing: "premium commission",
     precedence: 45,
@@ -390,12 +423,13 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     primaryBuyer: "Product",
     signals: [
       { pattern: /\b(insurtech|insurance\s*tech)\b/i, weight: 2 },
-      { pattern: /\b(acko|digit|policybazaar)\b/i, weight: 2 },
+      { pattern: /\b(acko|digit)\b/i, weight: 2 },
     ]
   },
   insurance_aggregator: {
-    role: "non_competitor" as const,
-    label: "Insurance Aggregator (Policy Lead Gen)",
+    role: "non_competitor",
+    entityRole: "distributor",
+    label: "Insurance Aggregator",
     definition: "insurance lead generation layer",
     pricing: "premium commission",
     precedence: 40,
@@ -405,13 +439,13 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     primaryBuyer: "Product",
     signals: [
       { pattern: /\b(insurance\s*aggregator)\b/i, weight: 2 },
-      { pattern: /\b(policybazaar)\b/i, weight: 2 },
     ]
   },
-  // 8. CORE SYSTEMS
+  // 8. CORE BANKING / LEDGER
   core_banking: {
-    role: "non_competitor" as const,
-    label: "Core Banking (Ledger of Truth)",
+    role: "ecosystem_player",
+    entityRole: "ecosystem_player",
+    label: "Core Banking",
     definition: "banking ledger of truth layer",
     pricing: "opaque",
     precedence: 35,
@@ -425,8 +459,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   ledger_infra: {
-    role: "non_competitor" as const,
-    label: "Ledger Infra (Software Balances)",
+    role: "ecosystem_player",
+    entityRole: "ecosystem_player",
+    label: "Ledger Infra",
     definition: "software ledger & reconciliation layer",
     pricing: "opaque",
     precedence: 30,
@@ -438,10 +473,11 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
       { pattern: /\b(ledger\s*infra|ledger\s*as\s*a\s*service)\b/i, weight: 2 },
     ]
   },
-  // 9. COMPLIANCE
+  // 9. COMPLIANCE / RISK
   kyc_aml: {
-    role: "competitor" as const,
-    label: "KYC/AML (Identity Compliance)",
+    role: "ecosystem_player",
+    entityRole: "ecosystem_player",
+    label: "KYC/AML",
     definition: "identity & compliance safety layer",
     pricing: "opaque",
     precedence: 25,
@@ -455,8 +491,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   fraud_risk: {
-    role: "competitor" as const,
-    label: "Fraud/Risk (Safety Layer)",
+    role: "ecosystem_player",
+    entityRole: "ecosystem_player",
+    label: "Fraud/Risk",
     definition: "transaction risk & fraud safety layer",
     pricing: "opaque",
     precedence: 20,
@@ -470,8 +507,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   regtech: {
-    role: "competitor" as const,
-    label: "Regtech (Reporting Layer)",
+    role: "ecosystem_player",
+    entityRole: "ecosystem_player",
+    label: "Regtech",
     definition: "regulatory reporting & compliance layer",
     pricing: "opaque",
     precedence: 15,
@@ -484,10 +522,11 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
       { pattern: /\b(perfios|idfy)\b/i, weight: 2 },
     ]
   },
-  // 10. EDGE CASES
+  // 10. GLOBAL / EDGE CASES
   bigtech_finance: {
-    role: "non_competitor" as const,
-    label: "Bigtech Finance (Scale Distribution)",
+    role: "ecosystem_player",
+    entityRole: "ecosystem_player",
+    label: "Bigtech Finance",
     definition: "scale-based distribution layer",
     pricing: "opaque",
     precedence: 10,
@@ -500,8 +539,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   crypto_fintech: {
-    role: "non_competitor" as const,
-    label: "Crypto Fintech (Alt Assets)",
+    role: "non_competitor",
+    entityRole: "ecosystem_player",
+    label: "Crypto Fintech",
     definition: "alternative asset infrastructure layer",
     pricing: "opaque",
     precedence: 5,
@@ -515,8 +555,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   cross_border_payments: {
-    role: "non_competitor" as const,
-    label: "Cross-border Payments (FX & Settlement)",
+    role: "ecosystem_player",
+    entityRole: "ecosystem_player",
+    label: "Cross-border Payments",
     definition: "FX settlement & cross-border layer",
     pricing: "opaque",
     precedence: 0,
@@ -526,12 +567,13 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     primaryBuyer: "CTO",
     signals: [
       { pattern: /\b(cross\s*border|cross-border|international\s*remittance)\b/i, weight: 2 },
-      { pattern: /\b(wise|payoneer|remitly|stripe\s*atlas)\b/i, weight: 2 },
+      { pattern: /\b(wise|payoneer)\b/i, weight: 2 },
     ]
   },
   collections_infra: {
-    role: "competitor" as const,
-    label: "Collections Infra (Debt Recovery)",
+    role: "direct_competitor",
+    entityRole: "competitor",
+    label: "Collections Infra",
     definition: "debt recovery & collections orchestration layer",
     pricing: "commission + platform fee",
     precedence: 102,
@@ -545,8 +587,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   escrow_infra: {
-    role: "competitor" as const,
-    label: "Escrow Infra (Safe Settlement)",
+    role: "direct_competitor",
+    entityRole: "competitor",
+    label: "Escrow Infra",
     definition: "safe settlement & escrow orchestration layer",
     pricing: "per-escrow fee",
     precedence: 108,
@@ -560,8 +603,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   card_network: {
-    role: "supply_side" as const,
-    label: "Card Network (Railing)",
+    role: "partner",
+    entityRole: "supplier",
+    label: "Card Network",
     definition: "card network & settlement railing layer",
     pricing: "interchange",
     precedence: 160,
@@ -574,8 +618,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     ]
   },
   credit_bureau: {
-    role: "supply_side" as const,
-    label: "Credit Bureau (Identity/Credit Data)",
+    role: "partner",
+    entityRole: "supplier",
+    label: "Credit Bureau",
     definition: "credit data & identity history layer",
     pricing: "per-report fee",
     precedence: 155,
@@ -590,18 +635,14 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
 } as const;
 
 export type BFSICategory = keyof typeof BFSI_TAXONOMY;
-export type MarketRole = "competitor" | "non_competitor" | "supply_side";
-
-export interface EntityClassification {
-  primaryRole: MarketRole;
-  category: BFSICategory;
-  subCategory?: string;
-  marketRoleDetail?: string;
-}
 
 // DERIVED HELPERS - Truly DRY
 export function getMarketRole(category: BFSICategory): MarketRole {
   return BFSI_TAXONOMY[category].role;
+}
+
+export function getEntityRole(category: BFSICategory): EntityRole {
+  return BFSI_TAXONOMY[category].entityRole;
 }
 
 export const BFSI_CATEGORY_LABELS = Object.fromEntries(
