@@ -65,6 +65,12 @@ export interface ExtractedIntelligence {
     strategic_relevance?: string; 
     impact?: "high" | "medium" | "low" 
   }>;
+  narratives?: {
+    executive_signal: string;
+    why_we_win: string[];
+    why_we_lose: string[];
+    strategic_risks: string[];
+  };
 }
 
 export interface ClassificationResult {
@@ -106,7 +112,8 @@ export type PipelineStage =
   | "normalizing"
   | "primitives"
   | "vars"
-  | "rendering";
+  | "rendering"
+  | "error";
 
 export interface PipelineCallbacks {
   onStageChange: (stage: PipelineStage, message: string) => void;

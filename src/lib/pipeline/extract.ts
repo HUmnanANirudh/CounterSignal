@@ -1,6 +1,7 @@
 import { generateText } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { PreprocessedData, ExtractedIntelligence } from "@/types";
+import type { CategoryStrategy } from "@/types/entity";
 import { isValidSignalText } from "./sanitize";
 
 const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -118,13 +119,14 @@ function validateExtractedIntelligence(data: ExtractedIntelligence): ExtractedIn
 
 const EXTRACTION_MAX_RETRIES = 0; // Single attempt for latency
 
-const MAX_CONTEXT_CHARS = 4000; // Cap context for latency
+const MAX_CONTEXT_CHARS = 50000; // Increased to match 15k tokens from preprocess
 
 export async function extract(
   preprocessed: PreprocessedData,
   competitor: string,
+  strategy: CategoryStrategy,
 ): Promise<ExtractedIntelligence> {
-  console.log(`[Extract] Starting extraction for ${competitor}`);
+  console.log(`[Extract] Starting extraction for ${competitor} with ${strategy.strategicGoal} goal`);
   console.log(`[Extract] Pricing candidates: ${preprocessed.pricing_candidates.length}`);
   console.log(`[Extract] Complaints: ${preprocessed.complaint_sentences.length}`);
   console.log(`[Extract] Reviews: ${preprocessed.review_blocks.length}`);
@@ -159,22 +161,21 @@ export async function extract(
   const negativeSignalsInfo = preprocessed.negative_signals?.map(s => `[${s.type}] ${s.text}`).join("\n") || "None found";
 
   const prompt = `Extract fintech competitor data for "${competitor}". Return ONLY valid JSON.
-Extract ALL significant moves, product launches, regulatory events, and strategic updates identified in the data. Do not limit the count.
+Your STRATEGIC GOAL for this battlecard is: ${strategy.strategicGoal}.
 
 CRITICAL RULES - VIOLATION = REJECTED OUTPUT:
 1. DIFFERENTIATORS: Must be product capabilities or GTM advantages, NOT credentials (funding, G2 ratings, unicorn status).
-2. DATES: Every move MUST have a date. Use the Year (e.g. "2024") if specific day/month is missing. Avoid "unknown" if a year can be inferred from context.
-3. PRICING POSTURE: Do NOT render raw evidence or fragments. SYNTHESIZE a commercial posture from the data (e.g. "Transitioning toward fee-based monetization", "Push toward transaction monetization"). Return as an array of 2-3 professional bullets in a "synthesis" field within pricing_posture.
-4. CUSTOMER SENTIMENT: Extract specific operational patterns (e.g. "unresponsive support", "seamless integration") rather than generic adjectives.
-5. REVIEW INTERPRETATION: 3-3.9 stars = "moderate/mixed sentiment". 4+ stars = "positive". Below 3 = "negative".
-6. TARGET SEGMENTS: Be specific (e.g., "Series A fintechs") not generic ("Enterprise").
-7. CUSTOMER TRUTHS: Include fraud incidents, regulatory issues, and financial signals in keyComplaints.
-8. BUYER-OPERATIONAL TRUTHS: Strengths/Weaknesses must be operational (e.g. "Simplifies global tax" NOT "Easy to use").
-9. STRATEGIC OVERLAP: Map the COMPETITOR'S capabilities: "payment_routing", "deposit_lifecycle", "kyc_kyb", "banking_compliance", "tax_handling", "reg_orchestration". Values: "native", "partnered", "partial", "none".
-10. EVENT TAXONOMY: Categorize strictly as: "PRODUCT_LAUNCH", "REGULATORY_ENFORCEMENT", "LICENSE_ACTION", "STRATEGIC_RESTRUCTURE", "FUNDING", "MARKET_EXPANSION".
-11. NOISE REJECTION: REJECT any fragments containing "Datalabs_in-article-icon", malformed HTML, or dangling punctuation.
-12. STRATEGIC RELEVANCE: Provide analytical GTM implications, not news-dumps.
-13. VARS ACKNOWLEDGE: Transform features into executive-level operational implications.
+2. DATES: Every move MUST have a date. Use the Year (e.g. "2024") if specific day/month is missing.
+3. PRICING POSTURE: SYNTHESIZE a commercial posture from the data. Return as an array of 2-3 professional bullets.
+4. CUSTOMER SENTIMENT: Extract specific operational patterns.
+5. STRATEGIC RELEVANCE: Provide analytical GTM implications, not news-dumps.
+6. VARS GENERATION:
+   - VALIDATE: Use this base if data is missing, but prefer a data-driven version: "${strategy.validate}"
+   - ACKNOWLEDGE: Use this base: "${strategy.acknowledge}"
+   - REFRAME: Create a DYNAMIC competitive pivot based on the goal: "${strategy.reframe}". 
+     Instructions: Don't just parrot the base; use the data to show WHY the competitor's approach is insufficient for regulated banking.
+   - SPECIFY: Create a DYNAMIC Blostem solution: "${strategy.specify}".
+     Instructions: Show how Blostem solves the specific gap identified in the Reframe.
 
 Data:
 ${processedData.raw_content.slice(0, MAX_CONTEXT_CHARS)}
@@ -185,7 +186,7 @@ Reviews: ${reviewInfo}
 Negative signals (fraud/regulatory/financial): ${negativeSignalsInfo}
 
 JSON (only one model, one entryPrice):
-{"positioning":{"tagline":"string","targetSegments":[],"differentiators":[]},"pricing_posture":{"model":"string","entryPrice":"string","tiers":[],"opacity":"clear|opaque","synthesis":["bullet1","bullet2"]},"recent_moves":[{"name":"string","date":"string","impact":"high|medium|low","type":"PRODUCT_LAUNCH|REGULATORY_ENFORCEMENT|LICENSE_ACTION|STRATEGIC_RESTRUCTURE|FUNDING|MARKET_EXPANSION","strategic_relevance":"string"}],"customer_truths":{"positives":[],"negatives":[],"keyComplaints":[]},"strategic_overlap":{"payment_routing":"native|partnered|partial|none","deposit_lifecycle":"native|partnered|partial|none","kyc_kyb":"native|partnered|partial|none","banking_compliance":"native|partnered|partial|none","tax_handling":"native|partnered|partial|none","reg_orchestration":"native|partnered|partial|none"},"decision_orientation":{"compete_aggressively_when":[],"do_not_compete_when":[],"why_this_appears_in_deals":[]},"VARS":{"validate":"string","acknowledge":"string"}}
+{"positioning":{"tagline":"string","targetSegments":[],"differentiators":[]},"pricing_posture":{"model":"string","entryPrice":"string","tiers":[],"opacity":"clear|opaque","synthesis":["bullet1","bullet2"]},"recent_moves":[{"name":"string","date":"string","impact":"high|medium|low","type":"PRODUCT_LAUNCH|REGULATORY_ENFORCEMENT|LICENSE_ACTION|STRATEGIC_RESTRUCTURE|FUNDING|MARKET_EXPANSION","strategic_relevance":"string"}],"customer_truths":{"positives":[],"negatives":[],"keyComplaints":[]},"strategic_overlap":{"payment_routing":"native|partnered|partial|none","deposit_lifecycle":"native|partnered|partial|none","kyc_kyb":"native|partnered|partial|none","banking_compliance":"native|partnered|partial|none","deposit_compliance":"native|partnered|partial|none","tax_compliance":"native|partnered|partial|none","reg_orchestration":"native|partnered|partial|none"},"decision_orientation":{"compete_aggressively_when":[],"do_not_compete_when":[],"why_this_appears_in_deals":[]},"VARS":{"validate":"string","acknowledge":"string","reframe":"string","specify":"string"},"narratives":{"executive_signal":"string","why_we_win":[],"why_we_lose":[],"strategic_risks":[]}}
 
 Return ONLY the JSON object. No markdown, no explanation.`;
   for (let attempt = 0; attempt <= EXTRACTION_MAX_RETRIES; attempt++) {

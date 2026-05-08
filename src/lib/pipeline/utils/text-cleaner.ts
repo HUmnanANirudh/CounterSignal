@@ -8,6 +8,7 @@ export interface CleaningOptions {
   minWords?: number;
   maxChars?: number;
   requireQuote?: boolean;
+  bypassMateriality?: boolean;
 }
 
 export function cleanPipelineText(
@@ -18,7 +19,8 @@ export function cleanPipelineText(
     isNewsSource = false,
     minWords = 6,
     maxChars = 500,
-    requireQuote = false
+    requireQuote = false,
+    bypassMateriality = false
   } = options;
 
   const trimmed = text.trim();
@@ -37,7 +39,6 @@ export function cleanPipelineText(
     /<[^>]+>/,      // HTML tags
     /^[^\w\s]{3,}$/, // just punctuation
     /#\w+/,          // hashtags
-    /🤝|🚀|🔥|💎|📈|📉|📊/, // emojis common in PR/social fluff
     /\b(cookie|privacy policy|terms of service|all rights reserved|subscribe|newsletter|follow us|copyright)\b/i,
   ];
 
@@ -50,10 +51,12 @@ export function cleanPipelineText(
   if (uniqueWords.size < words.length * 0.4) return null;
 
   // 4. Materiality Filtering (Ensure snippet has strategic or buyer-impact value)
+  if (bypassMateriality) return trimmed;
+
   const isMaterial = (
-    /\b(fee|cost|support|activation|wait|complex|pricing|mdr|markup|transparent|opaque)\b/i.test(lower) ||
-    /\b(fraud|outage|delay|failed|compliance|rbi|security|penalty|violation|reliability|risk|custody|license|winding\s+up)\b/i.test(lower) ||
-    /\b(valuation|funding|pivot|exit|acquisition|market\s*share|displace|revenue|growth\s*focus|merger|series\s+[a-z])\b/i.test(lower)
+    /\b(fee|cost|support|activation|wait|complex|pricing|mdr|markup|transparent|opaque|settlement|payout|resolution)\b/i.test(lower) ||
+    /\b(fraud|outage|delay|failed|compliance|rbi|security|penalty|violation|reliability|risk|custody|license|winding\s+up|regulatory|regulated|deposit|savings|yield|brokerage|kyc|kyb|aml|identity)\b/i.test(lower) ||
+    /\b(valuation|funding|pivot|exit|acquisition|market\s*share|displace|revenue|growth\s*focus|merger|series\s+[a-z]|workflow|familiarity|orchestration|standardized|banking|fintech|profitable|bootstrapped|platform|wealth|asset|invest|passive|active)\b/i.test(lower)
   );
 
   if (!isMaterial) return null;

@@ -12,7 +12,7 @@ export type SentimentTopic =
   | "account_holds"
   | "integration_friction";
 
-export type SentimentPolarity = "positive" | "negative" | "mixed";
+export type SentimentPolarity = "positive" | "negative" | "mixed" | "neutral";
 
 export interface SentimentSignal {
   id: string;
@@ -29,6 +29,7 @@ export interface SentimentSignal {
 
 export interface SentimentCluster {
   topic: SentimentTopic;
+  polarity: SentimentPolarity;
   pattern: "recurring" | "emerging" | "isolated";
   patternConfidence: "HIGH" | "MEDIUM" | "LOW";
   frequency: number; // Number of signals in cluster

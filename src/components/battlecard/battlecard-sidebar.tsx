@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { Battlecard } from "@/types";
+import { STACK_POSITION_LABELS } from "@/types/entity";
 
 interface BattlecardSidebarProps {
   data: Battlecard;
@@ -26,7 +27,9 @@ export function BattlecardSidebar({ data }: BattlecardSidebarProps) {
               className={`capitalize ${
                 data.relationshipMode === "DIRECT_COMPETITOR" ? "border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-400" :
                 data.relationshipMode === "SUPPLY_SIDE_PARTNER" ? "border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400" :
+                data.relationshipMode === "INTERNAL_PROFILE" ? "border-purple-500/50 bg-purple-500/10 text-purple-700 dark:text-purple-400" :
                 data.relationshipMode === "INTEGRATION_TARGET" ? "border-blue-500/50 bg-blue-500/10 text-blue-700 dark:text-blue-400" :
+                data.relationshipMode === "UNKNOWN" ? "border-muted-foreground/50 bg-muted/50 text-muted-foreground" :
                 "border-orange-500/50 bg-orange-500/10 text-orange-700 dark:text-orange-400"
               }`}
             >
@@ -37,7 +40,7 @@ export function BattlecardSidebar({ data }: BattlecardSidebarProps) {
           <div>
             <div className="text-xs text-muted-foreground mb-1">Stack Position</div>
             <div className="text-sm font-semibold capitalize">
-              {data.stackPosition.replace("_", " ")}
+              {STACK_POSITION_LABELS[data.stackPosition] || data.stackPosition.replace("_", " ")}
             </div>
           </div>
           </div>

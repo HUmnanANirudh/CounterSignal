@@ -15,13 +15,17 @@ export function classifyCompetitor(
   const scores: Record<string, number> = {};
   const signals: string[] = [];
 
-  // Calculate scores for each category
+  // Calculate scores for each category using frequency analysis
   for (const [category, patternList] of Object.entries(CLASSIFICATION_SIGNALS)) {
     let categoryScore = 0;
     for (const { pattern, weight } of patternList) {
-      if (pattern.test(combined)) {
-        categoryScore += weight;
-        signals.push(`${category}:${pattern.source.slice(0, 20)}`);
+      // Use global match to count occurrences for better "intelligence"
+      const matches = combined.match(new RegExp(pattern.source, 'gi'));
+      if (matches) {
+        // Logarithmic scaling for frequency to avoid runaway scores
+        const frequencyBoost = Math.log2(1 + matches.length);
+        categoryScore += weight * frequencyBoost;
+        signals.push(`${category}:${pattern.source.slice(0, 15)}(x${matches.length})`);
       }
     }
     scores[category] = categoryScore;
@@ -62,9 +66,13 @@ export function classifyCompetitor(
     }
   }
 
-  // If no signals matched, use hint or default
-  if (maxScore < 0.2 && hint) {
-    maxCategory = hint;
+  // If no signals matched, use hint or default to non_bfsi
+  if (maxScore < 0.2) {
+    if (hint) {
+      maxCategory = hint;
+    } else {
+      maxCategory = "non_bfsi";
+    }
   }
 
   const marketRole = getMarketRole(maxCategory);

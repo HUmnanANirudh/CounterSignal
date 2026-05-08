@@ -3,7 +3,7 @@ import type { PersonaObjection, MarketRelationshipModel, CapabilityOrigin } from
 import { classifySignalType } from "./utils/signal-classify";
 import { BFSI_TAXONOMY, type BFSICategory, type MarketRole } from "@/types/entity";
 import { inferCapabilities } from "./utils/capability-inference";
-import { normalizeFundingAmount } from "./utils/format";
+import { normalizeFundingAmount, deduplicatePhrases } from "./utils/format";
 
 function isActualCustomerComplaint(signal: Signal): boolean {
   const complaintTypes = ["pricing_complaint", "support_issue", "integration_issue", "onboarding_delay", "quality_issue", "reliability"];
@@ -149,47 +149,50 @@ const RELATIONSHIP_PRIMITIVES: Record<MarketRole, {
   }
 };
 
-const DO_NOT_COMPETE_MAP: Record<MarketRole, string[]> = {
-  direct_competitor: [
-    "Prospect only needs checkout/payment acceptance.",
-    "No roadmap for regulated savings/deposit products.",
-    "Prioritizes global merchant billing over issuer orchestration."
+const DO_NOT_COMPETE_MAP: Record<MarketRole, (competitor: string, category: string) => string[]> = {
+  direct_competitor: (comp) => [
+    `Prospect only needs checkout/payment acceptance (not orchestration).`,
+    `No roadmap for regulated savings/deposit products in their core workflow.`,
+    `Prioritizes global merchant billing over ${comp}'s local banking depth.`
   ],
-  indirect_competitor: [
-    "Prospect primarily focused on B2C merchant acquisition.",
-    "No requirement for multi-bank redundancy.",
-    "Only needs basic ledgering without regulatory orchestration."
+  indirect_competitor: (comp, cat) => [
+    `Prospect primarily focused on B2C merchant acquisition via ${comp}.`,
+    `No requirement for multi-bank redundancy provided by Blostem.`,
+    `Only needs basic ${cat} ledgering without regulatory orchestration.`
   ],
-  partner: [
-    "Distributor already has deep, direct bank-infra ownership.",
-    "Prospect does not want to expose inventory to external platforms."
+  partner: (comp, cat) => [
+    `Prospect already has deep, direct bank-infra ownership with ${comp}.`,
+    `Entity does not want to expose their ${cat} inventory to external platforms.`,
+    `Commercial model requires exclusive issuer-direct relationship without middleware.`
   ],
-  non_competitor: [
-    "Entity is a pure consumer app with no intent to launch banking products."
+  non_competitor: (comp, cat) => [
+    `Entity is a pure consumer app with no intent to launch ${cat} features.`,
+    `Technical stack is fully locked into ${comp}'s proprietary end-to-end flow.`
   ],
-  ecosystem_player: [
-    "Bank already has a fully modern, API-first core banking system."
+  ecosystem_player: (comp, cat) => [
+    `Institution already has a fully modern, API-first ${cat} system.`,
+    `Requirement is for professional services/custom build rather than SaaS infra.`
   ]
 };
 
 const ROLE_PRIMITIVES: Record<MarketRole, (competitor: string) => StrategicImplication> = {
   direct_competitor: (comp) => ({
-    implication: `Infrastructure orchestration for ${comp}'s banking rails`,
+    implication: `Direct technical stack overlap with ${comp} on banking orchestration`,
     personas: {
       CTO: {
-        objection: `How do you manage the maintenance overhead of multiple direct bank integrations?`,
-        counter: `Blostem provides a single platform that standardizes orchestration while keeping technical logs transparent. You maintain control over orchestration, optimizing against the integration needs of various banking APIs.`,
-        landmine: `What is the process for accessing raw audit logs when verifying fund flow visibility?`
+        objection: `Why shift from ${comp}'s integrated stack to Blostem?`,
+        counter: `${comp} provides a payment-centric stack, but lacks specialized multi-bank orchestration for regulated banking products. Blostem gives you single-platform standardization with direct banking-log visibility.`,
+        landmine: `How do you manage the maintenance overhead of multiple direct bank integrations within ${comp}'s mediated flow?`
       },
       Founder: {
-        objection: `Are we building our savings product on a single platform or stitching APIs together?`,
-        counter: `Blostem is designed for banking products. You get a standardized experience for FDs/RDs, with a stack optimized for regulated deposit orchestration workflows rather than global merchant billing flows.`,
-        landmine: `How does the platform's pricing or bank-priority configuration impact long-term integration strategy?`
+        objection: `Is it better to stick with ${comp} for all our financial products?`,
+        counter: `All-in-one stacks like ${comp} create vendor lock-in and roadmap dependency. Blostem is the aggregator equivalent for banking products, giving you the flexibility to swap banks without re-building your core product logic.`,
+        landmine: `What happens to our unit economics if ${comp} increases their platform-wide fee structure next year?`
       },
       Compliance: {
-        objection: `How does the abstraction layer handle banking-product complexity?`,
-        counter: `Managing complexity requires transparency. Blostem emphasizes direct banking-state visibility and audit-trace preservation across issuer integrations.`,
-        landmine: `What is the process for producing raw banking logs for every transaction?`
+        objection: `How does Blostem handle banking-product complexity compared to ${comp}?`,
+        counter: `${comp} abstracts banking details away, which can hinder audit transparency. Blostem emphasizes direct banking-state visibility and audit-trace preservation, which is critical for regulated FDs and RDs.`,
+        landmine: `What is the process for producing raw, bank-direct logs for every transaction in ${comp}'s platform today?`
       }
     }
   }),
@@ -299,7 +302,7 @@ export function deriveDealPrimitives(
 
   // Relationship model derivation
   const relationship: MarketRelationshipModel = {
-    primary: "DIRECT_COMPETITOR",
+    primary: "UNKNOWN",
     secondary: [],
     overlap_score: 0.5
   };
@@ -307,6 +310,8 @@ export function deriveDealPrimitives(
   if (marketRole === "direct_competitor") {
     relationship.primary = "DIRECT_COMPETITOR";
     relationship.secondary = ["INDIRECT_COMPETITOR"];
+  } else if (marketRole === "indirect_competitor") {
+    relationship.primary = "INDIRECT_COMPETITOR";
   } else if (marketRole === "partner") {
     relationship.primary = "SUPPLY_SIDE_PARTNER";
   } else if (marketRole === "non_competitor") {
@@ -338,17 +343,26 @@ export function deriveDealPrimitives(
     };
   }
 
+  // Why We Win (Dynamic)
+  const why_we_win = intelligence.narratives?.why_we_win || gtmPrim.why_we_win;
+
   // Why We Lose
-  let why_we_lose = [
-    `${competitor} has strong market familiarity and existing workflow depth in the ${metadata.label} segment.`
-  ];
-  if (marketRole === "partner" || marketRole === "ecosystem_player") {
-    why_we_lose = [`Technical dependencies or commercial misalignments on shared revenue models.`];
+  // Why We Lose (Synthesized from role, label, and extracted narratives)
+  let why_we_lose = intelligence.narratives?.why_we_lose || [];
+  if (why_we_lose.length === 0) {
+    const roleBasedWhyLose = {
+      direct_competitor: [`Established legacy depth in ${metadata.label} and potential lock-in with existing enterprise banking relationships.`],
+      indirect_competitor: [`Horizontal market familiarity and broader consumer-facing ecosystem presence beyond infrastructure.`],
+      partner: [`Dependency on ${competitor}'s specific asset-issuance capacity or potential commercial misalignment.`],
+      non_competitor: [`Market perception as a specialized ${metadata.label} platform may lead to perceived lower operational risk in early-stage deals.`],
+      ecosystem_player: [`Technical dependencies on ${competitor}'s proprietary rails or regulatory reporting systems.`]
+    };
+    why_we_lose = roleBasedWhyLose[marketRole] || [`Strong market incumbency and specialized workflow depth in the ${metadata.label} segment.`];
   }
 
   // Quick Dismisses
   const actualComplaints = signals.filter(s => isActualCustomerComplaint(s));
-  const quick_dismisses: string[] = [];
+  let quick_dismisses: string[] = [];
   for (const signal of actualComplaints.slice(0, 2)) {
     const signalType = classifySignalType(signal.value, signal.normalizedType);
     switch (signalType) {
@@ -358,44 +372,71 @@ export function deriveDealPrimitives(
     }
   }
   if (quick_dismisses.length === 0) {
-    if (marketRole === "direct_competitor" || marketRole === "indirect_competitor") {
-      quick_dismisses.push(`Is ${competitor} providing standardized banking orchestration or just a mediated payment layer?`);
-    } else {
-      quick_dismisses.push(`How does ${competitor}'s current stack integrate with multi-institution FD/RD flows?`);
-    }
+    const dismissFallbacks = {
+      direct_competitor: [`Does ${competitor} provide standardized multi-bank orchestration or just a mediated API layer for a single issuer?`],
+      indirect_competitor: [`Is the goal to move funds through ${competitor} or to orchestrate the actual banking product lifecycle with Blostem?`],
+      partner: [`How does ${competitor}'s current issuance capacity align with our need for multi-institution redundancy?`],
+      non_competitor: [`Is ${competitor} the primary distribution interface, or are you looking for the underlying infrastructure rails to power it?`],
+      ecosystem_player: [`Does integrating with ${competitor} solve the core regulatory orchestration overhead of managing banking products?`]
+    };
+    quick_dismisses = dismissFallbacks[marketRole] || [`Confirm if ${competitor} provides native infrastructure or just a mediated software layer.`];
   }
 
-  // Customer Sentiment (Synthesized from actual signals)
-  const positives = signals
-    .filter(s => s.normalizedType === "success_metric" || s.value.toLowerCase().includes("positive") || s.value.toLowerCase().includes("trusted"))
+  // Customer Sentiment (Merge LLM synthesis with raw signals)
+  const extractedPositives = intelligence.customer_truths?.positives || [];
+  const extractedNegatives = intelligence.customer_truths?.negatives || [];
+
+  const rawPositives = signals
+    .filter(s => s.normalizedType === "success_metric" || s.value.toLowerCase().includes("positive"))
     .map(s => s.summary || s.value.slice(0, 80));
   
-  const negatives = actualComplaints.map(s => s.summary || s.value.slice(0, 80));
+  const rawNegatives = actualComplaints.map(s => s.summary || s.value.slice(0, 80));
   
   const customer_sentiment = {
-    positives: positives.length > 0 ? positives.slice(0, 3) : [],
-    negatives: negatives.length > 0 ? negatives.slice(0, 3) : []
+    positives: deduplicatePhrases([...extractedPositives, ...rawPositives]).slice(0, 3),
+    negatives: deduplicatePhrases([...extractedNegatives, ...rawNegatives]).slice(0, 4)
   };
 
   // Strategic Risks (Refined phrasing)
-  const strategic_risks = [
-    `Dependency on bundled compliance and settlement infrastructure may reduce operational transparency.`,
-    `Potential for support bottlenecks during deep ${metadata.label} escalations.`
-  ];
-  if (marketRole === "partner") {
-    strategic_risks.push("Commercial misalignments on shared revenue or distribution models.");
+  let strategic_risks = intelligence.narratives?.strategic_risks || [];
+  if (strategic_risks.length === 0) {
+    const riskFallbacks = {
+      direct_competitor: [
+        `Operational lock-in within ${competitor}'s proprietary workflow limits multi-institution redundancy.`,
+        `Potential for margin compression if transaction costs are bundled with licensing.`
+      ],
+      partner: [
+        `Operational dependency on ${competitor}'s specific issuer capacity.`,
+        `Commercial misalignment on long-term yield-sharing or distribution exclusivity.`
+      ],
+      ecosystem_player: [
+        `Technical coupling to ${competitor}'s proprietary rails may increase migration complexity.`,
+        `Limited visibility into the underlying state of regulated banking assets.`
+      ],
+      indirect_competitor: [
+        `Horizontal expansion by ${competitor} into infrastructure may create overlapping feature debt.`,
+        `Potential for ecosystem fragmentation as ${competitor} bundles non-core financial products.`
+      ],
+      non_competitor: [
+        `Operational silos between ${competitor}'s distribution layer and Blostem's orchestration layer.`,
+        `Strategic misalignment if ${competitor} shifts towards proprietary infrastructure rails.`
+      ]
+    };
+    strategic_risks = riskFallbacks[marketRole] || [
+      `Reliance on specialized ${metadata.label} workflows may create single-partner failure risk.`,
+      `Potential for support bottlenecks during deep regulatory escalations.`
+    ];
   }
-
-  // Executive Signal (Issue 1 - Refined for overlap vs competition)
-  const executive_signal = (competitor.toLowerCase().includes("paytm") || competitor.toLowerCase().includes("phonepe"))
-    ? `${competitor} overlaps with Blostem at the merchant distribution layer, but does not provide specialized infrastructure for regulated deposit orchestration.`
-    : relationship.primary === "DIRECT_COMPETITOR" 
+  
+  const executive_signal = intelligence.narratives?.executive_signal || (
+    marketRole === "direct_competitor" 
     ? `${competitor} actively competes on core fintech workflow, but lacks Blostem's specialized multi-bank orchestration for regulated banking products.`
-    : relationship.primary === "INDIRECT_COMPETITOR"
-    ? `${competitor} dominates transaction movement and consumer engagement, but relies on Blostem-like infra for deep banking-product orchestration.`
-    : relationship.primary === "INTEGRATION_TARGET"
-    ? `${competitor} provides complementary infrastructure; integration creates a unified data and compliance flow for banking products.`
-    : `${competitor} expands Blostem's orchestration layer with critical institution-grade asset inventory and regulatory depth.`;
+    : marketRole === "partner"
+    ? `${competitor} provides critical ${metadata.label} capacity; Blostem acts as the technology bridge to digital distribution.`
+    : marketRole === "ecosystem_player"
+    ? `${competitor} provides essential specialized rails that complement Blostem's cross-institution orchestration.`
+    : `${competitor} operates as a specialized ${metadata.label} entity, offering potential integration synergies with Blostem's infrastructure.`
+  );
 
   // Pricing Framing (Issue 5 - Fallback for zero evidence)
   const hasNoPricingEvidence = intelligence.pricing_posture?.entryPrice?.includes("No verified public pricing") || !intelligence.pricing_posture?.tiers?.length;
@@ -403,7 +444,14 @@ export function deriveDealPrimitives(
   
   let pricing_framing: string[] = [];
   if (hasNoPricingEvidence) {
-    pricing_framing = ["No verified public pricing structure identified beyond standard transaction-linked monetization patterns."];
+    const modelLabels: Record<string, string> = {
+      transaction_linked: "Transaction-linked MDR and volume-based settlement fees.",
+      api_saas: "API usage-based tiers (per-call) with standard platform subscription layers.",
+      license_as_service: "Bundled license-as-a-service fees combined with transaction markup.",
+      retail_monetization: "Merchant-facing subscription models with per-user or per-trade commissions.",
+      interbank_fee: "Interchange-linked revenue models and interbank settlement fees."
+    };
+    pricing_framing = [modelLabels[metadata.businessModel] || "Standardized transaction-linked monetization patterns."];
   } else if (isAiBilling) {
     pricing_framing = [
       "Consumption-based billing for autonomous agent workflows.",
@@ -412,9 +460,9 @@ export function deriveDealPrimitives(
     ];
   } else {
     pricing_framing = [
-      "MDR-linked monetization structures common in transaction layers.",
-      "Merchant transaction volume-based pricing tiers.",
-      "Bundled platform fees for custody and compliance orchestration."
+      metadata.pricing || "Volume-linked transaction fee structures.",
+      "Merchant-specific pricing tiers based on operational complexity.",
+      "Bundled platform fees for integrated custody and compliance rails."
     ];
   }
 
@@ -449,14 +497,22 @@ export function deriveDealPrimitives(
     });
 
   return {
-    company_overview: intelligence.positioning?.tagline || `${competitor} — ${metadata.label}.`,
+    company_overview: intelligence.positioning?.tagline 
+      ? `${intelligence.positioning.tagline} ${intelligence.positioning.targetSegments?.length ? `The platform serves ${intelligence.positioning.targetSegments.join(', ')} with a focus on ${intelligence.positioning.differentiators?.slice(0, 2).join(' and ') || 'operational efficiency'}.` : ''}` 
+      : `${competitor} is a key infrastructure provider in the ${metadata.label} segment, focused on ${metadata.definition.toLowerCase()}.`,
     competitor_type: compType,
     entity_role: metadata.entityRole,
     category_contrast: `${competitor} = ${metadata.definition}; Blostem = payment aggregator equivalent for banking products (standardized FD/RD orchestration)`,
     relationship_mode: relationship.primary,
     relationship,
     strategic_overlap,
-    strategic_relationship: intelligence.strategic_overlap ? "Direct technical integration target for unified banking rails." : undefined,
+    strategic_relationship: marketRole === "direct_competitor" 
+      ? `**Displace**: ${competitor} actively overlaps with Blostem's core workflow as a ${metadata.label}. Focus on our specialized banking orchestration vs their generic ${metadata.definition.toLowerCase()} stack.`
+      : marketRole === "indirect_competitor"
+      ? `**Strategic Overlap**: ${competitor} dominates ${metadata.label} volume, but relies on Blostem-like infrastructure for deeper banking-product orchestration and regulatory auditability.`
+      : marketRole === "partner"
+      ? `**Primary Partner**: ${competitor} is a key asset issuer in the ${metadata.label} space; integration directly expands Blostem's yield inventory for wealthtech distributors.`
+      : `**Integration Target**: ${competitor} serves as a high-intent distribution channel for Blostem's embedded banking products within the ${metadata.label} ecosystem.`,
     strategic_risks,
     recent_launches,
     strategic_events,
@@ -476,7 +532,7 @@ export function deriveDealPrimitives(
     ],
     compete_aggressively_when: gtmPrim.gtm_push,
     why_this_appears_in_deals: intelligence.decision_orientation?.why_this_appears_in_deals || [],
-    do_not_compete_when: DO_NOT_COMPETE_MAP[marketRole] || [],
+    do_not_compete_when: DO_NOT_COMPETE_MAP[marketRole] ? DO_NOT_COMPETE_MAP[marketRole](competitor, metadata.label) : [],
     signal_trace: signals.slice(0, 3).map(s => ({
       signal: s.value.slice(0, 80),
       weapon: "Strategic inference",

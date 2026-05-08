@@ -19,14 +19,14 @@ function calculateSignalConfidence(
   sourceConfig: ReturnType<typeof getSentimentSourceConfig>,
   sourceUrl?: string
 ): number {
-  // Determine if this is a verified sentiment source
-  const isVerifiedSource = sourceConfig != null ||
-    (sourceUrl && isCustomerSentimentSource(sourceUrl));
+  // 1. Determine if this is a verified or high-quality source
+  const isVerifiedSource = sourceConfig != null;
+  const isHQNews = sourceUrl && /\b(the-ken|entrakr|inc42|livemint|economictimes|business-standard|medianama|yourstory|vccircle|moneycontrol)\b/i.test(sourceUrl);
 
-  // Base confidence
-  let confidence = isVerifiedSource ? 0.5 : 0.25;
+  // 2. Base confidence
+  let confidence = isVerifiedSource ? 0.5 : isHQNews ? 0.45 : 0.25;
 
-  // Source type weights (if available)
+  // Source type weights
   const typeWeights: Record<string, number> = {
     review: 0.8,
     app_review: 0.7,
@@ -37,29 +37,32 @@ function calculateSignalConfidence(
   
   if (sourceConfig) {
     confidence = typeWeights[sourceConfig.type] ?? 0.5;
+  } else if (isHQNews) {
+    confidence = 0.55; // Boost HQ news base
   }
 
-  // Content length bonus (longer = more specific = higher confidence)
+  // 3. Content Detail Bonus
   if (text.length > 150) confidence += 0.1;
   if (text.length > 300) confidence += 0.1;
 
-  // Exact quote indicator (quotes, specificity)
+  // Exact quote or numeric specificity
   if (/["'“”‘’]/.test(text)) confidence += 0.15;
-
-  // Specific details (numbers, dates, names) = higher confidence
-  if (/\d+/.test(text)) confidence += 0.05;
+  if (/\d+/.test(text) || /\b(percent|MDR|fee|charges|MDR|settlement)\b/i.test(text)) {
+    confidence += 0.1;
+  }
 
   return Math.min(confidence, 0.95);
 }
 
-export function extractSentimentSignals(
+export async function extractSentimentSignals(
   content: string,
-  citations: Citation[]
-): SentimentSignal[] {
+  citations: Citation[],
+  competitor: string
+): Promise<SentimentSignal[]> {
   const signals: SentimentSignal[] = [];
+  const competitorLower = competitor.toLowerCase();
 
   // Split content by headers: "## Title"
-  // The first part (before any "## ") contains the AI-generated answers
   const rawSections = content.split(/\n## /);
   const answersSection = rawSections[0];
   const dataSections = rawSections.slice(1);
@@ -84,26 +87,29 @@ export function extractSentimentSignals(
     const sourceConfig = getSentimentSourceConfig(matchingCitation.url);
     const sentences = body.split(/[.!?\n]+/).filter((s) => s.trim().length > 30);
     
-    // PER-SOURCE LIMIT: Max 5 signals per individual source to prevent bias
     let sourceSignals = 0;
 
     for (const sentence of sentences) {
       if (sourceSignals >= 5) break;
 
-      // Determine if source is news (skeptical of sentiment)
-      const isNews = !sourceConfig;
+      // ENTITY RELEVANCE GATE: Signal must mention the entity or be in a verified source block about the entity
+      const lowerSentence = sentence.toLowerCase();
+      const mentionsEntity = lowerSentence.includes(competitorLower) || 
+                            competitorLower.split(' ').some(word => word.length > 3 && lowerSentence.includes(word));
       
+      if (!mentionsEntity && !sourceConfig) continue; // Reject generic noise from unverified sources
+      
+      const isNews = !sourceConfig;
       const cleaned = cleanPipelineText(sentence, { isNewsSource: isNews, minWords: 8 });
       if (!cleaned || cleaned.trim() === "") continue;
 
-      // Classify
       const topic = inferTopicFromText(cleaned);
       const polarity = detectPolarity(cleaned);
 
-      // Calculate confidence
+      if (polarity === "neutral") continue; // Reject non-sentimental trivia
+
       const confidence = calculateSignalConfidence(cleaned, sourceConfig, matchingCitation.url);
 
-      // Threshold gate
       if (confidence < 0.3) continue;
 
       signals.push({
@@ -122,21 +128,23 @@ export function extractSentimentSignals(
     }
   }
 
-  // 2. Process answers section (fallback attribution to first citation or "AI Summary")
+  // 2. Process answers section
   const answerSentences = answersSection.split(/[.!?\n]+/).filter((s) => s.trim().length > 30);
   for (const sentence of answerSentences) {
-    const cleaned = cleanPipelineText(sentence, { isNewsSource: true, minWords: 12 }); // Summary needs substance
+    const lowerSentence = sentence.toLowerCase();
+    if (!lowerSentence.includes(competitorLower)) continue; // Summary must be entity-focused
+
+    const cleaned = cleanPipelineText(sentence, { isNewsSource: true, minWords: 12 });
     if (!cleaned || cleaned.length < 50) continue;
 
     const topic = inferTopicFromText(cleaned);
     const polarity = detectPolarity(cleaned);
 
-    // AI answers get lower base confidence but can be boosted by content signals
     let confidence = 0.4;
     if (cleaned.includes('"')) confidence += 0.15;
     if (/\d+/.test(cleaned)) confidence += 0.05;
 
-    if (confidence < 0.5) continue; // Higher bar for AI-summarized sentiment
+    if (confidence < 0.5) continue;
 
     signals.push({
       id: `sentiment_${signalIndex++}`,
@@ -150,137 +158,108 @@ export function extractSentimentSignals(
     });
   }
 
-  console.log(`[Sentiment] Extracted ${signals.length} signals from ${signals.length > 0 ? new Set(signals.map(s => s.source)).size : 0} sources`);
   return signals;
 }
 
-export function clusterSentimentSignals(signals: SentimentSignal[]): SentimentCluster[] {
-  const topicGroups: Record<SentimentTopic, SentimentSignal[]> = {} as Record<
-    SentimentTopic,
-    SentimentSignal[]
-  >;
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { generateText } from "ai";
 
-  // Group by topic
+const google = createGoogleGenerativeAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
+
+export async function clusterSentimentSignals(
+  signals: SentimentSignal[],
+  competitor: string
+): Promise<SentimentCluster[]> {
+  const groupKey = (topic: string, polarity: string) => `${topic}:::${polarity}`;
+  const groups: Record<string, SentimentSignal[]> = {};
+
+  // Group by (topic, polarity)
   for (const signal of signals) {
-    if (!topicGroups[signal.topic]) {
-      topicGroups[signal.topic] = [];
+    const key = groupKey(signal.topic, signal.polarity);
+    if (!groups[key]) {
+      groups[key] = [];
     }
-    topicGroups[signal.topic].push(signal);
+    groups[key].push(signal);
   }
 
-  const clusters: SentimentCluster[] = [];
+  const rawClusters: any[] = [];
 
-  for (const [topic, topicSignals] of Object.entries(topicGroups)) {
+  for (const [key, topicSignals] of Object.entries(groups)) {
     if (topicSignals.length === 0) continue;
+    const [topic, polarity] = key.split(":::") as [SentimentTopic, SentimentPolarity];
 
-    // Determine pattern confidence based on frequency and agreement
+    // Determine pattern confidence
     const frequency = topicSignals.length;
     const avgConfidence =
       topicSignals.reduce((acc, s) => acc + s.confidence, 0) / topicSignals.length;
 
-    let patternConfidence: "HIGH" | "MEDIUM" | "LOW";
-    if (frequency >= 3 && avgConfidence >= 0.7) {
-      patternConfidence = "HIGH";
-    } else if (frequency >= 2 && avgConfidence >= 0.5) {
-      patternConfidence = "MEDIUM";
-    } else {
-      patternConfidence = "LOW";
-    }
-
-    // Sort by polarity for summary
-    const byPolarity = topicSignals.reduce(
-      (acc, s) => {
-        acc[s.polarity] = (acc[s.polarity] || 0) + 1;
-        return acc;
-      },
-      {} as Record<SentimentPolarity, number>
-    );
-
-    const dominantPolarity =
-      (Object.entries(byPolarity).sort((a, b) => b[1] - a[1])[0]?.[0] as SentimentPolarity) ?? "mixed";
+    let patternConfidence: "HIGH" | "MEDIUM" | "LOW" = 
+      (frequency >= 3 && avgConfidence >= 0.7) ? "HIGH" :
+      (frequency >= 2 && avgConfidence >= 0.5) ? "MEDIUM" : "LOW";
 
     const pattern: SentimentCluster["pattern"] =
       frequency >= 3 ? "recurring" : frequency === 2 ? "emerging" : "isolated";
 
-    // PROFESSIONAL THEME SYNTHESIS
-    const themeTemplates: Record<SentimentTopic, Partial<Record<SentimentPolarity, string>>> = {
-      support: {
-        positive: "Users report highly responsive and helpful support channels with fast resolution.",
-        negative: "Support escalation delays appear repeatedly during account-review or transaction incidents.",
-        mixed: "Support quality is inconsistent, with high responsiveness but varied resolution depth."
-      },
-      pricing: {
-        positive: "Competitive and transparent pricing models are frequently cited as a key market differentiator.",
-        negative: "Users report concerns regarding opaque fee structures and unexpected transaction charges.",
-        mixed: "Value-to-cost ratio is viewed positively, though entry-level pricing is perceived as high."
-      },
-      reliability: {
-        positive: "Platform stability and uptime consistency are highlighted as core operational strengths.",
-        negative: "Occasional service outages and reliability issues impact user trust during peak hours.",
-        mixed: "General stability is good, but performance varies during high-volume settlement windows."
-      },
-      ux: {
-        positive: "The interface is consistently praised for its intuitive design and low onboarding friction.",
-        negative: "Users report UI clutter and navigation complexity in the merchant dashboard.",
-        mixed: "Modern aesthetics are appreciated, but critical workflows can be difficult to locate."
-      },
-      onboarding: {
-        positive: "Onboarding and KYC workflows are noted for being fast and highly automated.",
-        negative: "Manual verification delays and document rejection cycles cause significant friction.",
-        mixed: "Digital onboarding is smooth, but edge-case compliance checks are slow."
-      },
-      api_quality: {
-        positive: "Developer-friendly SDKs and comprehensive documentation reduce integration cycles.",
-        negative: "API documentation is often outdated or lacks clear error-handling examples.",
-        mixed: "API performance is robust, but the integration sandbox is limited."
-      },
-      settlement_speed: {
-        positive: "Fast settlement cycles and clear payout visibility are major drivers of retention.",
-        negative: "Recurring complaints regarding delayed settlements and lack of status transparency.",
-        mixed: "Settlements are generally on-time, but weekend processing is inconsistent."
-      },
-      compliance: {
-        positive: "Strong adherence to regulatory guidelines provides peace of mind for enterprise partners.",
-        negative: "Stiff compliance requirements and sudden account holds create operational risk.",
-        mixed: "Regulatory standing is secure, but compliance-driven UX changes are jarring."
-      },
-      documentation: {
-        positive: "Extensive help resources and tutorials facilitate self-serve troubleshooting.",
-        negative: "Help articles lack technical depth and fail to cover complex use cases.",
-        mixed: "Broad documentation exists, but search functionality is poor."
-      },
-      hidden_fees: {
-        positive: "Transparent commercial terms with no reported hidden costs or surprises.",
-        negative: "Repeated mentions of surprise charges not clearly disclosed in the initial contract.",
-        mixed: "Core pricing is clear, but peripheral service fees are sometimes unexpected."
-      },
-      account_holds: {
-        positive: "Account security measures are robust and protect against fraudulent activity.",
-        negative: "Sudden and unexplained account freezes cause severe business disruption for merchants.",
-        mixed: "Necessary security protocols are in place, but the unfreezing process is slow."
-      },
-      integration_friction: {
-        positive: "Technical implementation is seamless with dedicated support for complex stacks.",
-        negative: "Integration requires significant manual configuration and technical overhead.",
-        mixed: "Standard integrations are easy, but bespoke configurations are friction-heavy."
-      }
-    };
-
-    const summary = themeTemplates[topic as SentimentTopic]?.[dominantPolarity] || 
-                    `${topic.replace(/_/g, " ").charAt(0).toUpperCase() + topic.replace(/_/g, " ").slice(1)} ${dominantPolarity} patterns reported by multiple sources.`;
-
     const evidence = topicSignals[0].quote.slice(0, 120);
 
-    clusters.push({
-      topic: topic as SentimentTopic,
+    rawClusters.push({
+      topic,
+      polarity,
       pattern,
       patternConfidence,
       frequency,
       signals: topicSignals,
-      summary,
       evidence,
     });
   }
+
+  // Batch summarize clusters via LLM for "intelligence" and to avoid template vibes
+  if (rawClusters.length > 0) {
+    try {
+      const prompt = `Synthesize professional sentiment themes for "${competitor}".
+Each theme MUST be a single, dense, operator-grade sentence (max 25 words).
+Incorporate specific details from the signals but maintain executive tone.
+No templates. No fluff.
+
+Clusters:
+${rawClusters.map((c, i) => `[Cluster ${i}] Topic: ${c.topic}, Polarity: ${c.polarity}\nSignals: ${c.signals.map((s: any) => s.quote).join(' | ')}`).join('\n\n')}
+
+Return ONLY a JSON array of strings: ["summary for cluster 0", "summary for cluster 1", ...]`;
+
+      const { text } = await generateText({
+        model: google("gemini-2.5-flash-lite"),
+        prompt,
+      });
+
+      const cleanJson = text.replace(/```json|```/g, "").trim();
+      const summaries = JSON.parse(cleanJson);
+
+      if (Array.isArray(summaries) && summaries.length === rawClusters.length) {
+        rawClusters.forEach((c, i) => {
+          c.summary = summaries[i];
+        });
+      }
+    } catch (e) {
+      console.error("[Sentiment] LLM synthesis failed, using fallback:", e);
+      rawClusters.forEach(c => {
+        c.summary = `${c.topic.replace(/_/g, " ")} ${c.polarity} feedback reported in ${c.frequency} signals.`;
+      });
+    }
+  }
+
+  // Final mapping to strict type
+  const clusters: SentimentCluster[] = rawClusters.map(c => ({
+    topic: c.topic,
+    polarity: c.polarity,
+    pattern: c.pattern,
+    patternConfidence: c.patternConfidence,
+    frequency: c.frequency,
+    signals: c.signals,
+    summary: c.summary || "No summary generated.",
+    evidence: c.evidence,
+  }));
 
   // Sort by frequency descending
   clusters.sort((a, b) => b.frequency - a.frequency);
@@ -289,10 +268,11 @@ export function clusterSentimentSignals(signals: SentimentSignal[]): SentimentCl
   return clusters;
 }
 
-export function buildSentimentAnalysis(
+export async function buildSentimentAnalysis(
   signals: SentimentSignal[],
-): SentimentAnalysis {
-  const clusters = clusterSentimentSignals(signals);
+  competitor: string
+): Promise<SentimentAnalysis> {
+  const clusters = await clusterSentimentSignals(signals, competitor);
 
   const uniqueTopics = new Set(signals.map((s) => s.topic));
   const polarityCounts = signals.reduce(
@@ -334,14 +314,14 @@ export function buildSentimentAnalysis(
   ];
   const gaps = allTopics.filter((t) => !uniqueTopics.has(t));
 
-  const avgConfidence =
-    signals.length > 0
-      ? signals.reduce((acc, s) => acc + s.confidence, 0) / signals.length
-      : 0;
+  const avgConfidence = signals.length > 0
+    ? signals.reduce((acc, s) => acc + s.confidence, 0) / signals.length
+    : 0;
+
   const confidence: SentimentAnalysis["confidence"] =
-    avgConfidence >= 0.7 && signals.length >= 3
+    (avgConfidence >= 0.65 && signals.length >= 4) || signals.length >= 8
       ? "HIGH"
-      : avgConfidence >= 0.5 && signals.length >= 2
+      : (avgConfidence >= 0.45 && signals.length >= 2) || signals.length >= 4
       ? "MEDIUM"
       : "LOW";
 

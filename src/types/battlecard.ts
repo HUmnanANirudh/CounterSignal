@@ -1,4 +1,4 @@
-import { RelationshipMode } from "./entity";
+import { RelationshipMode, StackPosition } from "./entity";
 
 export interface PricingTier {
   name: string;
@@ -166,7 +166,7 @@ export interface Battlecard {
   recent_moves: RecentMove[];
   customer_truths: CustomerTruths;
   relationshipMode: RelationshipMode;
-  stackPosition: "consumer_layer" | "distribution_layer" | "infra_layer" | "issuer_layer" | "unknown";
+  stackPosition: StackPosition;
 
   VARS_layer: VARSLayer;
   objection_handling: ObjectionHandling[];

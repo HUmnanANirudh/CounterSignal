@@ -1,7 +1,7 @@
 import type { PreprocessedData,NegativeSignalType } from "@/types";
 import { classifyNegativeSignal } from "./utils/signal-classify";
 
-const MAX_TOKENS = 12000;
+const MAX_TOKENS = 15000;
 const PRICING_PATTERNS = [
   /\$[\d,]+(?:\/month|\/mo|\/year|\/transaction|\/user)?/gi,
   /₹[\d,]+(?:\/month|\/mo|\/year|\/transaction|\/user)?/gi,
@@ -38,7 +38,7 @@ function truncateToTokens(text: string, maxTokens: number): string {
   return text.slice(0, maxChars) + "...";
 }
 
-export function preprocess(rawContent: string): PreprocessedData {
+export function preprocess(rawContent: string, competitor: string = "competitor"): PreprocessedData {
   const sentences = rawContent.split(/[.!?\n]+/).filter(Boolean);
 
   const pricing_candidates: string[] = [];
@@ -108,12 +108,15 @@ export function preprocess(rawContent: string): PreprocessedData {
   }
 
   const prioritizedContent = [
+    `### PRIORITY SIGNALS FOR ${competitor.toUpperCase()}`,
     ...pricing_candidates.slice(0, 10),
     ...uniqueNegativeSignals.map(s => s.text).slice(0, 15),
     ...complaint_sentences.slice(0, 10),
     ...launch_sentences.slice(0, 15),
     ...review_blocks.slice(0, 8),
     ...feature_mentions.slice(0, 6),
+    `### FULL RESEARCH CONTEXT`,
+    rawContent
   ].join("\n");
 
   return {

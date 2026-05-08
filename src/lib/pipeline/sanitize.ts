@@ -98,9 +98,11 @@ export function isValidSignalText(text: string): boolean {
   return cleanPipelineText(text, { minWords: 5 }) !== null;
 }
 
-export function cleanText(text: string): string {
+export function cleanText(text: string, options?: { minWords?: number; bypassMateriality?: boolean }): string {
   if (!text) return "";
-  if (!isValidSignalText(text)) return "";
+  const minWords = options?.minWords ?? 5;
+  const bypassMateriality = options?.bypassMateriality ?? false;
+  if (cleanPipelineText(text, { minWords, bypassMateriality }) === null) return "";
   return sanitizeText(text);
 }
 
@@ -291,9 +293,14 @@ export function sanitizeForAE(battlecard: AE_BATTLECARD): AE_BATTLECARD {
     ...battlecard,
 
     // 1-2 lines max, filler stripped
+    // Relaxed word count for tagline/overview (min 3 words) and bypass materiality
     company_overview: stripFillers(
-      sanitizeText(battlecard.company_overview).split(". ").slice(0, 2).join(". ").trim()
-    ),
+      cleanText(battlecard.company_overview, { minWords: 3, bypassMateriality: true })
+        .split(". ")
+        .slice(0, 2)
+        .join(". ")
+        .trim()
+    ) || battlecard.company_overview,
 
     competitor_type: battlecard.competitor_type,
 

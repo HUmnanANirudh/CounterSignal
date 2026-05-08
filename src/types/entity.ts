@@ -27,6 +27,25 @@ export type InfraLayer =
   | "wealth_tech"
   | "collections_ops"
   | "identity_rails"
+  | "treasury_management"
+  | "risk_scoring"
+  | "ledger_infra"
+  | "tax_compliance"
+  | "unknown";
+
+export type StackPosition = 
+  | "consumer_facing_app"
+  | "distribution_aggregator"
+  | "product_orchestration"
+  | "connectivity_layer"
+  | "ledger_of_truth"
+  | "asset_manufacturer"
+  | "compliance_gate"
+  | "checkout_interface"
+  | "consumer_layer"
+  | "distribution_layer"
+  | "infra_layer"
+  | "issuer_layer"
   | "unknown";
 
 export type MarketRole = 
@@ -40,14 +59,10 @@ export type RelationshipMode =
   | "DIRECT_COMPETITOR"
   | "INDIRECT_COMPETITOR"
   | "INTEGRATION_TARGET"
-  | "SUPPLY_SIDE_PARTNER";
-
-export type StackPosition = 
-  | "consumer_layer"
-  | "distribution_layer"
-  | "infra_layer"
-  | "issuer_layer"
-  | "unknown";
+  | "SUPPLY_SIDE_PARTNER"
+  | "NON_COMPETITOR_ECOSYSTEM"
+  | "INTERNAL_PROFILE"
+  | "UNKNOWN";
 
 export type EntityRole = 
   | "competitor"
@@ -78,7 +93,7 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
   payment_gateway: {
     role: "direct_competitor",
     relationshipMode: "DIRECT_COMPETITOR",
-    stackPosition: "infra_layer",
+    stackPosition: "checkout_interface",
     entityRole: "competitor",
     label: "Payment Gateway",
     definition: "checkout & acquiring layer",
@@ -97,7 +112,7 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
   payment_aggregator: {
     role: "indirect_competitor",
     relationshipMode: "INDIRECT_COMPETITOR",
-    stackPosition: "distribution_layer",
+    stackPosition: "distribution_aggregator",
     entityRole: "competitor",
     label: "Payment Aggregator",
     definition: "merchant aggregation & settlement layer",
@@ -114,7 +129,7 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
   wallet: {
     role: "indirect_competitor",
     relationshipMode: "INDIRECT_COMPETITOR",
-    stackPosition: "distribution_layer",
+    stackPosition: "consumer_facing_app",
     entityRole: "competitor",
     label: "Wallet",
     definition: "consumer liquidity & closed-loop payment layer",
@@ -132,7 +147,7 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
   upi_app: {
     role: "indirect_competitor",
     relationshipMode: "INDIRECT_COMPETITOR",
-    stackPosition: "distribution_layer",
+    stackPosition: "consumer_facing_app",
     entityRole: "competitor",
     label: "UPI App",
     definition: "consumer UPI interface layer",
@@ -150,7 +165,7 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
   payment_orchestration: {
     role: "direct_competitor",
     relationshipMode: "DIRECT_COMPETITOR",
-    stackPosition: "infra_layer",
+    stackPosition: "product_orchestration",
     entityRole: "competitor",
     label: "Payment Orchestration",
     definition: "payment routing & logic layer",
@@ -168,7 +183,7 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
   merchant_of_record: {
     role: "direct_competitor",
     relationshipMode: "DIRECT_COMPETITOR",
-    stackPosition: "infra_layer",
+    stackPosition: "compliance_gate",
     entityRole: "competitor",
     label: "Merchant of Record",
     definition: "payment compliance & tax abstraction layer",
@@ -187,7 +202,7 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
   banking_api_infra: {
     role: "direct_competitor",
     relationshipMode: "INTEGRATION_TARGET",
-    stackPosition: "infra_layer",
+    stackPosition: "connectivity_layer",
     entityRole: "infrastructure_partner",
     label: "Banking API Infra",
     definition: "banking API & account access layer (infra layer)",
@@ -206,7 +221,7 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
   embedded_finance_infra: {
     role: "direct_competitor",
     relationshipMode: "DIRECT_COMPETITOR",
-    stackPosition: "infra_layer",
+    stackPosition: "product_orchestration",
     entityRole: "competitor",
     label: "Embedded Finance Infra",
     definition: "embedded product issuance layer (Blostem-type)",
@@ -223,7 +238,7 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
   neobanking_infra: {
     role: "indirect_competitor",
     relationshipMode: "INDIRECT_COMPETITOR",
-    stackPosition: "infra_layer",
+    stackPosition: "ledger_of_truth",
     entityRole: "competitor",
     label: "Neobanking Infra",
     definition: "full-stack banking tech layer",
@@ -431,7 +446,9 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     infraLayer: "unknown",
     primaryBuyer: "Product",
     signals: [
-      { pattern: /\b(marketplace|comparison\s*platform|aggregator)\b/i, weight: 2 },
+      { pattern: /\b(financial\s*marketplace|product\s*comparison\s*platform|aggregator|investment\s*marketplace)\b/i, weight: 2 },
+      { pattern: /\b(policybazaar|bankbazaar|paisabazaar)\b/i, weight: 2 },
+      { pattern: /\b(compare\s*loans|compare\s*cards|compare\s*insurance)\b/i, weight: 1.5 },
     ]
   },
   distribution_api: {
@@ -718,6 +735,24 @@ export const BFSI_TAXONOMY: Record<string, BFSICategoryMetadata> = {
     signals: [
       { pattern: /\b(credit\s*bureau|cibil|experian|equifax|crif)\b/i, weight: 2 },
     ]
+  },
+  non_bfsi: {
+    role: "non_competitor",
+    relationshipMode: "UNKNOWN",
+    stackPosition: "unknown",
+    entityRole: "ecosystem_player",
+    label: "Non-BFSI Entity",
+    definition: "Entity outside of the core BFSI or Fintech infrastructure market",
+    pricing: "N/A",
+    precedence: 0,
+    businessModel: "retail_monetization",
+    custodyModel: "not_applicable",
+    infraLayer: "unknown",
+    primaryBuyer: "Product",
+    signals: [
+      { pattern: /\b(e-commerce|ecommerce|online\s*shopping|retail\s*brand|lifestyle\s*platform|apparel|fashion|electronics|grocer)\b/i, weight: 1.5 },
+      { pattern: /\b(tata\s*cliq|ajio|myntra|flipkart|amazon|reliance\s*retail)\b/i, weight: 2 },
+    ]
   }
 } as const;
 
@@ -764,4 +799,20 @@ export interface CategoryStrategy {
   acknowledge: string;
   reframe: string;
   specify: string;
+  strategicGoal: string;
 }
+export const STACK_POSITION_LABELS: Record<StackPosition, string> = {
+  consumer_facing_app: "Consumer Interface",
+  distribution_aggregator: "Marketplace / Aggregator",
+  product_orchestration: "Product Orchestration Layer",
+  connectivity_layer: "Connectivity Middleware",
+  ledger_of_truth: "Core Banking Ledger",
+  asset_manufacturer: "Product Issuer",
+  compliance_gate: "Compliance Gatekeeper",
+  checkout_interface: "Checkout / Payment Rail",
+  consumer_layer: "Consumer Distribution",
+  distribution_layer: "Distribution Channel",
+  infra_layer: "Infrastructure Rails",
+  issuer_layer: "Asset Issuance",
+  unknown: "Market Layer",
+};

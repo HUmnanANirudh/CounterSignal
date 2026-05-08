@@ -7,7 +7,7 @@ export type { ResolvedEntity, EntityResolutionResult };
 
 
 // Noise words to remove
-const NOISE_WORDS = ["inc", "ltd", "llc", "pvt", "private", "fintech", "app", "payments", "payment", "india", "indian", "fintech", "tech", "solutions", "services", "group"];
+const NOISE_WORDS = ["inc", "ltd", "llc", "pvt", "private", "fintech", "app", "payments", "payment", "india", "indian", "fintech", "tech", "solutions", "services", "group", "limited", "corp", "corporation"];
 
 // Alias resolution - map common nicknames to canonical names
 const ALIAS_MAP: Record<string, string> = {
@@ -26,7 +26,10 @@ const ALIAS_MAP: Record<string, string> = {
   "zerodha": "Zerodha",
   "upstox": "Upstox",
   "bajaj": "Bajaj Finserv",
-  "shriram": "Shriram",
+  "shriram": "Shriram Finance",
+  "shriram finance": "Shriram Finance",
+  "shriram transport": "Shriram Finance",
+  "shriram city": "Shriram Finance",
   "mobikwik": "MobiKwik",
   "phonepe": "PhonePe",
   "gpay": "Google Pay",
@@ -95,15 +98,21 @@ export function resolveEntity(query: string): EntityResolutionResult {
       canonicalName: displayName,
       aliases,
       domain: null,
-      categoryHint: "payment_gateway", // Default - will be classified later
+      categoryHint: "non_bfsi", // Default - will be classified later
       confidence: result.entityConfidence,
-      classification: { primaryRole: "direct_competitor", category: "payment_gateway" },
+      classification: { primaryRole: "non_competitor", category: "non_bfsi" },
     };
 
     // Check for common patterns to hint category
     // Use category signals from BFSI taxonomy instead of hardcoded company names
     const combined = query.toLowerCase();
-    if (/\b(insurtech|insurance\s*tech|insurance\s*aggregator|insurance\s*platform|life\s*insurance|general\s*insurance|health\s*insurance)\b/i.test(combined)) {
+    if (/\b(shriram|bajaj|muthoot|chola|mahindra\s*finance)\b/i.test(combined)) {
+      resolved.categoryHint = "nbfc";
+      resolved.classification = { primaryRole: "partner", category: "nbfc" };
+    } else if (/\b(zerodha|groww|upstox|angel\s*one|dhan|iifl|fyers)\b/i.test(combined)) {
+      resolved.categoryHint = "broker";
+      resolved.classification = { primaryRole: "non_competitor", category: "broker" };
+    } else if (/\b(insurtech|insurance\s*tech|insurance\s*aggregator|insurance\s*platform|life\s*insurance|general\s*insurance|health\s*insurance)\b/i.test(combined)) {
       resolved.categoryHint = "insurtech";
       resolved.classification = { primaryRole: "non_competitor", category: "insurtech" };
     } else if (/\b(broker|wealth\s*platform|robo\s*advisor|trading\s*platform|demat|securities)\b/i.test(combined)) {

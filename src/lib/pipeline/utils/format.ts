@@ -32,3 +32,14 @@ export function normalizeFundingAmount(amountStr: string | undefined): string {
   
   return amountStr;
 }
+
+export function deduplicatePhrases(phrases: string[]): string[] {
+  const seen = new Set<string>();
+  return phrases.filter(p => {
+    if (!p) return false;
+    const norm = p.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 30);
+    if (seen.has(norm)) return false;
+    seen.add(norm);
+    return p.length > 10;
+  });
+}

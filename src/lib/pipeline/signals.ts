@@ -61,7 +61,8 @@ export function resolveContradictions(signals: Signal[]): Signal[] {
 
 export function deriveSignals(
   preprocessed: PreprocessedData,
-  citations: Citation[]
+  citations: Citation[],
+  fullContent?: string
 ): { signals: Signal[]; sourceMap: Record<string, string[]> } {
   const signals: Signal[] = [];
   const sourceMap: Record<string, string[]> = {};
@@ -100,8 +101,9 @@ export function deriveSignals(
       if (!cleaned) continue;
 
       const normalizedType = type || normalizeSignal(cleaned);
+      const contextToSearch = fullContent || preprocessed.raw_content;
       const matchingCitations = citations.filter((c) =>
-        preprocessed.raw_content.includes(c.title.slice(0, 20))
+        contextToSearch.includes(c.title.slice(0, 20))
       );
       for (const citation of matchingCitations) {
         addSignalAppearance(normalizedType, cleaned, citation);

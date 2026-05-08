@@ -340,16 +340,18 @@ export async function search(competitor: string): Promise<SearchResult> {
   for (const r of allResults) {
     const titleLower = r.title.toLowerCase();
     const contentLower = r.content.toLowerCase();
-    const titleNorm = titleLower.replace(/[^a-z0-9]/g, "");
+    // Check if entity appears in title or content using aliases and canonical name
+    const inTitle = 
+      titleLower.includes(competitorLower) || 
+      titleLower.includes(entity.canonicalName.toLowerCase()) ||
+      entity.aliases.some(alias => titleLower.includes(alias.toLowerCase()));
 
-    // Check if entity appears in title or first 500 chars of content
-    const inTitle = titleNorm.includes(competitorNormalized);
+    const inContent = 
+      contentLower.includes(competitorLower) ||
+      contentLower.includes(entity.canonicalName.toLowerCase()) ||
+      entity.aliases.some(alias => contentLower.includes(alias.toLowerCase()));
 
-    // Also check raw match
-    const rawTitleMatch = titleLower.includes(competitorLower);
-    const rawContentMatch = contentLower.includes(competitorLower);
-
-    if (!rawTitleMatch && !rawContentMatch) {
+    if (!inTitle && !inContent) {
       rejectedResults.push({ url: r.url, title: r.title, reason: "no_entity_match" });
       continue;
     }
@@ -363,9 +365,11 @@ export async function search(competitor: string): Promise<SearchResult> {
     }
 
     // Check if content has substantive information (not just name drop)
-    // Accept if: in title OR has 200+ chars of content mentioning entity
+    // Accept if: in title OR has substantive mentions in content
     const entityCharCount = (r.content.match(new RegExp(competitorLower, "gi")) || []).length;
-    if (!inTitle && entityCharCount < 3) {
+    const canonicalCharCount = (r.content.match(new RegExp(entity.canonicalName, "gi")) || []).length;
+    
+    if (!inTitle && (entityCharCount + canonicalCharCount) < 2) {
       rejectedResults.push({ url: r.url, title: r.title, reason: "name_only_mention" });
       continue;
     }

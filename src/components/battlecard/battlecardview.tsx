@@ -93,7 +93,7 @@ export function BattleCardView({ competitor, markdown, data, isLoading }: Battle
       <Card className="p-8 text-center">
         <h3 className="text-lg font-semibold">No battlecard {competitor}</h3>
         <p className="text-sm text-muted-foreground ">
-          Enter a competitor name or press the <kbd className="text-sm mx-2">↵</kbd> to generate a battlecard
+          Enter a competitor name & press the <kbd className="text-sm mx-2">↵</kbd> to generate a battlecard
         </p>
       </Card>
     );

@@ -19,6 +19,8 @@ import {
   renderRelevanceAssessmentMarkdown,
   isInternalCompany,
   buildRelevanceAssessmentBattlecard,
+  buildInvalidInputBattlecard,
+  renderInvalidInputMarkdown,
 } from "./context-builders";
 import { getCategoryStrategy } from "./category-strategies";
 import { getRelationshipMode, getStackPosition } from "@/types/entity";
@@ -71,6 +73,19 @@ export async function runPipeline(
   competitor: string,
   callbacks: PipelineCallbacks
 ): Promise<void> {
+  // INPUT VALIDATION GATE: Ensure only company names are entered, not queries
+  const trimmed = competitor.trim();
+  const wordCount = trimmed.split(/\s+/).length;
+  const isQuery = wordCount > 4 || trimmed.includes("?") || /^(what|how|why|where|when|who|is|are|tell)\s/i.test(trimmed);
+  
+  if (isQuery && wordCount > 2) {
+    console.error(`[Pipeline] Input rejected as query: "${trimmed}"`);
+    const invalidCard = buildInvalidInputBattlecard(competitor);
+    callbacks.onChunk(renderInvalidInputMarkdown(invalidCard));
+    callbacks.onComplete(invalidCard);
+    return;
+  }
+
   const cached = getCached(competitor);
   if (cached) {
     callbacks.onStageChange("rendering", "Returning cached battlecard...");
@@ -114,7 +129,7 @@ export async function runPipeline(
     }
 
     callbacks.onStageChange("classifying", `Classifying ${competitor}...`);
-    const preprocessed = preprocess(rawContent);
+    const preprocessed = preprocess(rawContent, competitor);
 
     // Use classifyCompetitor (deterministic scoring model)
     const classification = classifyCompetitor(competitor, rawContent, resolution.resolved?.categoryHint);
@@ -130,92 +145,48 @@ export async function runPipeline(
       return;
     }
 
-    // RELEVANCE GATE
-    // Use marketRole directly — non_competitor and partner categories should NOT generate displacement cards
-    const isBFSICompetitor = classification.marketRole === "direct_competitor" || classification.marketRole === "indirect_competitor";
-
-    if (!isBFSICompetitor) {
-      console.warn(`[Pipeline] RELEVANCE GATE: ${competitor} is ${classification.marketRole} (${classification.category}) — not a Blostem competitor`);
-      const relevanceCard = buildRelevanceAssessmentBattlecard(competitor, classification);
-      setCache(competitor, relevanceCard);
-
-      // Also cache under any aliases to prevent duplicate runs
+    // Helper to cache battlecard for all aliases
+    const cacheWithAliases = (card: Battlecard) => {
+      setCache(competitor, card);
       const normalized = resolveEntity(competitor);
       if (normalized.resolved?.aliases) {
         for (const alias of normalized.resolved.aliases) {
           if (alias !== competitor.toLowerCase() && alias.length >= 3) {
-            setCache(alias, relevanceCard);
+            setCache(alias, card);
           }
         }
       }
+    };
 
+    // RELEVANCE GATE
+    const isRelevant = classification.category !== "non_bfsi";
+
+    if (!isRelevant) {
+      console.warn(`[Pipeline] RELEVANCE GATE: ${competitor} is non-BFSI — stopping generation`);
+      const relevanceCard = buildRelevanceAssessmentBattlecard(competitor, classification);
+      cacheWithAliases(relevanceCard);
       callbacks.onChunk(renderRelevanceAssessmentMarkdown(relevanceCard));
       callbacks.onComplete(relevanceCard);
       return;
     }
 
-    // SUPPLY-SIDE PATH (issuers like NBFCs, FD providers)
-    if (classification.marketRole === "partner") {
-      console.log(`[Pipeline] ${competitor} is SUPPLY-SIDE (${classification.category}) — generating supply-side context`);
-      const supplyCard = buildSupplySideBattlecard(competitor, classification.category, startTime, citations);
-      supplyCard.relationshipMode = "SUPPLY_SIDE_PARTNER";
-      supplyCard.stackPosition = getStackPosition(classification.category);
-      setCache(competitor, supplyCard);
-      callbacks.onChunk(renderMarkdown(supplyCard));
-      callbacks.onComplete(supplyCard);
-      return;
-    }
-
-    // NON-COMPETITOR PATH (aggregators, brokers, lenders, insurtech)
-    if (classification.marketRole === "non_competitor") {
-      console.log(`[Pipeline] ${competitor} is NOT a competitor (${classification.category}) — generating strategic context`);
-      const { signals } = deriveSignals(preprocessed, citations);
-      const strategicCard = buildNonCompetitorBattlecard(competitor, classification.category, startTime, citations, signals);
-      strategicCard.relationshipMode = getRelationshipMode(classification.category);
-      strategicCard.stackPosition = getStackPosition(classification.category);
-      setCache(competitor, strategicCard);
-
-      // Also cache under aliases to prevent duplicate generation
-      const normalized = resolveEntity(competitor);
-      if (normalized.resolved?.aliases) {
-        for (const alias of normalized.resolved.aliases) {
-          if (alias !== competitor.toLowerCase() && alias.length >= 3) {
-            setCache(alias, strategicCard);
-          }
-        }
-      }
-
-      callbacks.onChunk(renderMarkdown(strategicCard));
-      callbacks.onComplete(strategicCard);
-      return;
-    }
-
-    // COMPETITOR PATH
-    callbacks.onStageChange("preprocessing", `Found ${citations.length} sources from ${debugInfo?.domainCount || 1} domains, preprocessing...`);
-
-    if (preprocessed.pricing_candidates.length === 0) {
-      dataGaps.push("pricing_not_found");
-    }
-    if (preprocessed.complaint_sentences.length === 0 && !hasImplicitComplaints(preprocessed)) {
-      dataGaps.push("complaints_not_found");
-    }
-
-    callbacks.onStageChange("extracting", "Extracting structured intelligence...");
-    const extracted = await extract(preprocessed, competitor);
-
+    // Derive basic signals for all relevant entities
     callbacks.onStageChange("deriving", "Deriving signals and citation mapping...");
-    const { signals: rawSignals, sourceMap } = deriveSignals(preprocessed, citations);
+    const { signals: rawSignals, sourceMap } = deriveSignals(preprocessed, citations, rawContent);
 
-    // Step 2: Extract structured sentiment signals (customer voice only)
+    // UNIFIED INTELLIGENCE PATH (for all relevant entities)
+    callbacks.onStageChange("extracting", "Extracting strategic intelligence...");
+    const strategy = getCategoryStrategy(classification.category);
+    const extracted = await extract(preprocessed, competitor, strategy);
+
     callbacks.onStageChange("sentiment", "Extracting customer sentiment from verified sources...");
-    const sentimentSignals = extractSentimentSignals(rawContent, citations);
-    const sentiment_analysis = buildSentimentAnalysis(sentimentSignals);
+    const sentimentSignals = await extractSentimentSignals(rawContent, citations, competitor);
+    const sentiment_analysis = await buildSentimentAnalysis(sentimentSignals, competitor);
 
-    // Step 3: Extract pricing evidence (company-specific, not generic)
+    // Extract pricing evidence (company-specific)
     const pricing_evidence = extractPricingEvidence(preprocessed.pricing_candidates, citations);
 
-    // Step 4: Cluster financial events (deduplicate regulatory events)
-    // Map extracted recent_moves to FinancialEvent with proper event family grouping
+    // Cluster strategic events
     const eventTypeToFamily: Record<string, string> = {
       LICENSE_ACTION: "Regulatory",
       REGULATORY_ENFORCEMENT: "Regulatory",
@@ -278,7 +249,15 @@ export async function runPipeline(
     console.log(`[Pipeline] Confidence (Entity: ${confidence.entityScore}, Strategic: ${confidence.strategicScore}) — VARS: ${suppressVARS ? "suppressed" : "shown"}, Objections: ${suppressObjections ? "suppressed" : "shown"}`);
 
     callbacks.onStageChange("primitives", "Generating deal primitives for AE use...");
-    const raw_ae_battlecard = deriveDealPrimitives(extracted, signals, citations, competitor, classification.category);
+
+    // Derive AE Battlecard primitives
+    const raw_ae_battlecard = deriveDealPrimitives(
+      extracted,
+      signals,
+      citations,
+      competitor,
+      classification.category
+    );
 
     // Apply confidence gating to deal primitives
     if (suppressObjections) {
@@ -292,14 +271,12 @@ export async function runPipeline(
 
     callbacks.onStageChange("vars", "Generating category-aware VARS positioning...");
 
-    const strategy = getCategoryStrategy(classification.category);
-
     // Deterministic VARS from extracted data, using Category Strategy Map for consistent semantics
     const vars_layer = {
       validate: extracted.VARS?.validate || extracted.positioning?.tagline || strategy.validate,
       acknowledge: extracted.VARS?.acknowledge || strategy.acknowledge,
-      reframe: strategy.reframe,
-      specify: strategy.specify,
+      reframe: extracted.VARS?.reframe || strategy.reframe,
+      specify: extracted.VARS?.specify || strategy.specify,
     };
 
 

@@ -31,6 +31,8 @@ const CAPABILITY_MAP: Record<string, {
       nbfc: "indirect",
       lending_platform: "indirect",
       wealth_platform: "orchestrated",
+      payment_gateway: "orchestrated", // RazorpayX type
+      broker: "partnered", // Zerodha/Groww FD integration
     } as any
   },
   kyc_kyb: {
@@ -43,6 +45,7 @@ const CAPABILITY_MAP: Record<string, {
       nbfc: "native",
       lending_platform: "native",
       broker: "native",
+      payment_gateway: "native",
     } as any
   },
   banking_compliance: {
@@ -54,6 +57,7 @@ const CAPABILITY_MAP: Record<string, {
       payment_aggregator: "partnered",
       wallet: "indirect",
       upi_app: "indirect",
+      broker: "partnered",
     } as any
   },
   deposit_compliance: {
@@ -62,6 +66,8 @@ const CAPABILITY_MAP: Record<string, {
       neobanking_infra: "native",
       embedded_finance_infra: "partnered",
       nbfc: "native",
+      payment_gateway: "orchestrated",
+      broker: "partnered",
     } as any
   },
   tax_compliance: {
