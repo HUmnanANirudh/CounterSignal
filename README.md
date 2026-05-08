@@ -50,7 +50,7 @@ A final post-processing layer ensures field-readiness:
 
 ## Technical Specifications
 
-- **AI Engine**: Gemini 2.5 Flash Lite via Vercel AI SDK.
+- **AI Engine**: Gemini model via Vercel AI SDK.
 - **Language**: TypeScript with Next.js 15 (App Router).
 - **Ontology**: Centralized BFSI classification system (entity.ts).
 - **Filtering**: Custom materiality engine (text-cleaner.ts) and relevance validator.

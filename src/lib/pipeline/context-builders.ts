@@ -1,6 +1,5 @@
 import type { Battlecard, VARSLayer } from "@/types/battlecard";
 import { BLOSTEM_PROFILE } from "@/lib/blostem-profile";
-import { getPricingModelForCategory } from "./classify";
 
 export function buildSupplySideVARSLayer(competitor: string, category: string): VARSLayer {
   return {

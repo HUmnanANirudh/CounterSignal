@@ -4,7 +4,7 @@ import type { PreprocessedData, ExtractedIntelligence } from "@/types";
 import type { CategoryStrategy } from "@/types/entity";
 import { isValidSignalText } from "./sanitize";
 
-const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
+const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY });
 
 
 function parseJsonResponse(text: string): ExtractedIntelligence | null {
@@ -198,15 +198,13 @@ Return ONLY the JSON object. No markdown, no explanation.`;
 
     let text: string;
     try {
-      const result = await generateText({
-        model,
+      text = (await generateText({
+        model: google("gemini-2.5-flash-lite"),
         prompt,
-        temperature: 0.05,
-        maxOutputTokens: 8192, // Increased to ensure full JSON completion
-      });
-      text = result.text;
+        temperature: 0.1,
+      })).text;
     } catch (err) {
-      console.error(`[Extract] LLM call failed: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`[Extract] LLM Attempt ${attempt + 1} failed:`, err instanceof Error ? err.message : String(err));
       continue; // Try again or fall through to fallback
     }
 

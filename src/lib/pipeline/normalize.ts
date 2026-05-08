@@ -3,7 +3,7 @@ import { generateText, Output } from "ai";
 import { z } from "zod";
 import type { Signal } from "@/types";
 
-const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
+const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY });
 
 export async function normalizeSignals(rawSignals: Omit<Signal, 'summary' | 'evidence'>[]): Promise<Signal[]> {
   if (rawSignals.length === 0) return [];

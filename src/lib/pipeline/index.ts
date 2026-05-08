@@ -314,14 +314,18 @@ export async function runPipeline(
     setCache(competitor, battlecard);
     const markdown = renderMarkdown(battlecard);
     callbacks.onChunk(markdown);
-    callbacks.onComplete(battlecard);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[Pipeline] Pipeline error for ${competitor}: ${errorMessage}`);
 
-    // Return insufficient data card on error
-    const insufficientCard = buildInsufficientDataBattlecard(competitor, 0, 0);
-    callbacks.onChunk(renderMarkdown(insufficientCard));
-    callbacks.onComplete(insufficientCard);
+    callbacks.onError(error instanceof Error ? error : new Error(errorMessage));
+
+    // Return informative error card on error
+    const errorCard = buildInsufficientDataBattlecard(competitor, 0, 0);
+    errorCard.AE_BATTLECARD.company_overview = `PIPELINE ERROR: ${errorMessage}`;
+    errorCard.positioning.tagline = `A technical error occurred while researching ${competitor}.`;
+    
+    callbacks.onChunk(renderMarkdown(errorCard));
+    callbacks.onComplete(errorCard);
   }
 }
