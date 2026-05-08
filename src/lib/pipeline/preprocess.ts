@@ -4,10 +4,12 @@ import { classifyNegativeSignal } from "./utils/signal-classify";
 const MAX_TOKENS = 12000;
 const PRICING_PATTERNS = [
   /\$[\d,]+(?:\/month|\/mo|\/year|\/transaction|\/user)?/gi,
+  /₹[\d,]+(?:\/month|\/mo|\/year|\/transaction|\/user)?/gi,
   /[\d,]+(?:\/month|\/mo|\/year|\/transaction|\/user)/gi,
-  /(?:pricing|price|fee|cost)\s+(?:starts|from|at)?\s*\$/gi,
-  /(?:plan|tier|package)\s*(?:start|from)?\s*\$/gi,
+  /(?:pricing|price|fee|cost)\s+(?:starts|from|at)?\s*[\$₹]/gi,
+  /(?:plan|tier|package)\s*(?:start|from)?\s*[\$₹]/gi,
   /free tier|free plan|entry[- ]level|starting at/i,
+  /percent.*fee|transaction.*fee|mdr|merchant.*discount/i,
 ];
 
 const COMPLAINT_PATTERNS = [

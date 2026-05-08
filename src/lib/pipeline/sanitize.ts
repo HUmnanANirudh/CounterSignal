@@ -1,20 +1,5 @@
-/**
- * sanitize.ts — Post-processing layer for AE-ready output.
- *
- * Rules enforced:
- *  - No raw URLs or URL fragments
- *  - No partial sentences or filler language
- *  - Deduped objections (by intent)
- *  - Quick dismiss: max 2, ≤ 12 words, complete thoughts only
- *  - VARS: ≤ 2 lines per section
- *  - Bullet caps per section
- *  - Signal trace stripped (internal-only layer)
- *  - Filler words removed
- */
-
 import type { AE_BATTLECARD, VARSLayer } from "@/types/battlecard";
-
-/* ── Filler removal ───────────────────────────────────────── */
+import { cleanPipelineText } from "./utils/text-cleaner";
 
 const FILLER_PATTERNS = [
   /\bit is pertinent to note that\b/gi,
@@ -92,6 +77,9 @@ export function sanitizeLine(line: string): string | null {
   const trimmed = line.trim();
   if (!trimmed || trimmed.length < MIN_LINE_LENGTH) return null;
 
+  // Apply cleanText rules
+  if (!isValidSignalText(trimmed)) return null;
+
   for (const pattern of STRIP_PATTERNS) {
     if (pattern.test(trimmed)) return null;
   }
@@ -104,6 +92,16 @@ export function sanitizeLine(line: string): string | null {
 
   if (cleaned.length < MIN_LINE_LENGTH) return null;
   return cleaned;
+}
+
+export function isValidSignalText(text: string): boolean {
+  return cleanPipelineText(text, { minWords: 5 }) !== null;
+}
+
+export function cleanText(text: string): string {
+  if (!text) return "";
+  if (!isValidSignalText(text)) return "";
+  return sanitizeText(text);
 }
 
 export function sanitizeText(text: string): string {

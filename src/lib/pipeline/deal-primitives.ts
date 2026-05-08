@@ -421,7 +421,7 @@ export function deriveDealPrimitives(
   // Event Taxonomy Split (Issue 3)
   const moves = intelligence.recent_moves || [];
   const recent_launches = moves
-    .filter(m => m.type === "product_launch" || m.type === "partnership" || m.type === "market_expansion")
+    .filter(m => m.type === "PRODUCT_LAUNCH" || m.type === "MARKET_EXPANSION")
     .map(move => ({
       ...move,
       impact: move.impact || "medium",
@@ -429,10 +429,10 @@ export function deriveDealPrimitives(
     }));
 
   const strategic_events = moves
-    .filter(m => m.type !== "product_launch" && m.type !== "partnership" && m.type !== "market_expansion")
+    .filter(m => m.type !== "PRODUCT_LAUNCH" && m.type !== "MARKET_EXPANSION")
     .map(move => {
       let name = move.name;
-      if (move.type === "funding" && name.toLowerCase().includes("raise")) {
+      if (move.type === "FUNDING" && name.toLowerCase().includes("raise")) {
         const parts = name.split(/(raises?|funding)/i);
         if (parts.length > 2) {
           const amount = parts[parts.length - 1].trim();

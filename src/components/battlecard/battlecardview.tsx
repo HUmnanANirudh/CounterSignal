@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { markdownToHtml } from "@/lib/markdown-to-html";
 import { exportHtmlToPdf } from "@/lib/export-pdf";
 import { BattlecardEditor } from "./battlecard-editor";
@@ -11,7 +11,6 @@ import { BattleCardViewProps } from "@/types";
 import { BattlecardSidebar } from "./battlecard-sidebar";
 
 export function BattleCardView({ competitor, markdown, data, isLoading }: BattleCardViewProps) {
-  const [editedHtml, setEditedHtml] = useState("");
 
   const handleExportPdf = useCallback(
     (currentMarkdown: string) => {
@@ -104,7 +103,6 @@ export function BattleCardView({ competitor, markdown, data, isLoading }: Battle
     <div className="flex flex-col lg:flex-row gap-6">
       <div className="flex-1 space-y-4 min-w-0">
         <BattlecardEditor
-          onChange={setEditedHtml}
           onExportPdf={handleExportPdf}
           markdown={markdown}
         />

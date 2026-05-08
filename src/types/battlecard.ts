@@ -20,14 +20,17 @@ export interface PricingPosture {
 }
 
 export type EventType =
-  | "product_launch"
-  | "regulatory_action"
-  | "partnership"
-  | "funding"
-  | "pricing_change"
-  | "license_update"
-  | "market_expansion"
-  | "compliance_event";
+  | "LICENSE_ACTION"
+  | "REGULATORY_ENFORCEMENT"
+  | "STRATEGIC_RESTRUCTURE"
+  | "FUNDING"
+  | "PRODUCT_LAUNCH"
+  | "MARKET_EXPANSION"
+  | "financial_result"
+  | "operational_incident"
+  | "leadership_change"
+  | "compliance_event"
+  | "unknown";
 
 export interface RecentMove {
   name: string;
@@ -176,6 +179,15 @@ export interface Battlecard {
   citations: Citation[];
   confidence: Confidence;
   dataGaps: string[];
+
+  // Structured sentiment analysis (Step 2)
+  sentiment_analysis?: import("./sentiment").SentimentAnalysis;
+
+  // Pricing evidence (Step 3)
+  pricing_evidence?: import("./sentiment").PricingEvidence[];
+
+  // Clustered events (Step 4)
+  event_clusters?: import("./sentiment").EventCluster[];
 }
 
 export interface BattlecardInput {

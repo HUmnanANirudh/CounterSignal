@@ -59,6 +59,25 @@ function truncateToDismiss(text: string): string {
   return words.slice(0, MAX_WORDS_PER_DISMISS).join(" ") + ".";
 }
 
+// Professional labels for event types (not machine-generated looking)
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  LICENSE_ACTION: "License Action",
+  REGULATORY_ENFORCEMENT: "Regulatory Enforcement",
+  STRATEGIC_RESTRUCTURE: "Strategic Restructure",
+  FUNDING: "Funding",
+  PRODUCT_LAUNCH: "Product Launch",
+  MARKET_EXPANSION: "Market Expansion",
+  financial_result: "Financial Results",
+  operational_incident: "Operational Incident",
+  leadership_change: "Leadership Change",
+  compliance_event: "Compliance Event",
+  unknown: "Strategic Event",
+};
+
+function getEventLabel(type: string): string {
+  return EVENT_TYPE_LABELS[type] ?? type.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export function renderMarkdown(battlecard: Battlecard): string {
   const { competitor, AE_BATTLECARD, citations, relationshipMode, stackPosition } = battlecard;
   const lines: string[] = [];
@@ -164,21 +183,38 @@ export function renderMarkdown(battlecard: Battlecard): string {
     add(`**Legend:** 🟢 NATIVE (Direct ownership) | 🟡 PARTNERED (Partner infra) | 🔵 ORCHESTRATED (Abstraction layer) | ⚪ INDIRECT (Adjacent) | 🔴 NONE (No support)`);
   }
 
-  // 5. Pricing Posture
+  // 5. Pricing Posture (Synthesized commercial posture)
   if (relMode === "DIRECT_COMPETITOR" || relMode === "INDIRECT_COMPETITOR") {
     addSection("Pricing Posture");
-    if (AE_BATTLECARD.pricing_framing?.length) {
+
+    // Calculate overall pricing confidence
+    let pricingConf = "LOW";
+    if (battlecard.pricing_evidence && battlecard.pricing_evidence.length > 0) {
+      const highConfCount = battlecard.pricing_evidence.filter(e => e.confidence === "HIGH").length;
+      pricingConf = highConfCount >= battlecard.pricing_evidence.length * 0.5 ? "HIGH" :
+                    highConfCount > 0 ? "MEDIUM" : "LOW";
+    }
+    add(`Confidence: ${pricingConf}`);
+
+    // Prioritize synthesis bullets from LLM
+    const pricingSynthesis = (battlecard.pricing_posture as any).synthesis || [];
+    if (pricingSynthesis.length > 0) {
+      for (const bullet of pricingSynthesis) {
+        addBullet(bullet);
+      }
+    } else if (AE_BATTLECARD.pricing_framing?.length) {
       for (const item of AE_BATTLECARD.pricing_framing) {
         addBullet(item);
       }
     } else {
-      add(AE_BATTLECARD.pricing_positioning || "Opaque, enterprise-negotiated pricing model.");
+      add("Limited verified public pricing information available.");
+      add("Observed indicators suggest enterprise-oriented or opaque billing.");
     }
   }
 
   // 6a. Recent Product / Platform Launches
   addSection("Recent Product / Platform Launches");
-  const validLaunches = (AE_BATTLECARD.recent_launches ?? []).filter(l => l.name && l.name !== "undefined");
+  const validLaunches = (AE_BATTLECARD.recent_launches ?? []).filter(l => l?.name && l?.name !== "undefined");
   if (validLaunches.length > 0) {
     for (const move of validLaunches) {
       add(`### ${move.name}`);
@@ -193,37 +229,99 @@ export function renderMarkdown(battlecard: Battlecard): string {
     add("No major launch signals confidently identified.");
   }
 
-  // 6b. Regulatory & Strategic Events
-  const validEvents = (AE_BATTLECARD.strategic_events ?? []).filter(e => e.name && e.name !== "undefined");
-  if (validEvents.length > 0) {
-    addSection("Regulatory & Strategic Events");
-    for (const event of validEvents) {
-      add(`### ${event.name}`);
-      add(`Date: ${event.date}`);
-      add(`Type: ${event.type.replace('_', ' ').toUpperCase()}`);
-      if (event.strategic_relevance) {
-        add(`**Strategic Relevance:**`);
-        add(event.strategic_relevance);
+  // 6b. Financial & Strategic Events (Step 4: Event clustering to avoid duplication)
+  const validEvents = (AE_BATTLECARD.strategic_events ?? []).filter(e => e?.name && e?.name !== "undefined");
+  if (validEvents.length > 0 || (battlecard.event_clusters && battlecard.event_clusters.length > 0)) {
+    addSection("Financial & Strategic Events");
+
+    // Use event clusters if available (deduplicated)
+    if (battlecard.event_clusters && battlecard.event_clusters.length > 0) {
+      for (const cluster of battlecard.event_clusters) {
+        add(`### ${cluster.eventFamily}`);
+        add(`**Headline:** ${cluster.headline}`);
+        add(`Date Range: ${cluster.dateRange}`);
+        add(`*Confidence: ${cluster.confidence}*`);
+        if (cluster.implications.length > 0) {
+          add(`**Implications:**`);
+          for (const impl of cluster.implications.slice(0, 4)) {
+            addBullet(impl, 200);
+          }
+        }
+        add("");
       }
-      add("");
+    } else {
+      // Fallback to raw events with professional labels
+      for (const event of validEvents) {
+        add(`### ${getEventLabel(event.type)}`);
+        add(`${event.name}`);
+        add(`Date: ${event.date}`);
+        if (event.strategic_relevance) {
+          add(`**Strategic Relevance:**`);
+          add(event.strategic_relevance);
+        }
+        add("");
+      }
     }
   }
 
-  // 7. Customer Sentiment
+  // 7. Customer Sentiment (Step 2-4: Structured sentiment with confidence)
   addSection(relMode === "SUPPLY_SIDE_PARTNER" ? "Customer / Market Sentiment" : "Customer Sentiment");
-  const sentiment = AE_BATTLECARD.customer_sentiment;
-  if (sentiment && (sentiment.positives.length > 0 || sentiment.negatives.length > 0)) {
-    if (sentiment.positives.length > 0) {
-      add(`**Positive Patterns:**`);
-      for (const p of sentiment.positives) addBullet(p);
+
+  // Use structured sentiment analysis if available
+  if (battlecard.sentiment_analysis && battlecard.sentiment_analysis.totalSignals > 0) {
+    const sa = battlecard.sentiment_analysis;
+
+    // Requested compact header format
+    add(`Confidence: ${sa.confidence}`);
+    add(`Validated Review Signals: ${sa.totalSignals}`);
+    const sourceSummary = sa.evidenceSources.map(e => `${e.domain.split('.')[0].charAt(0).toUpperCase() + e.domain.split('.')[0].slice(1)}(${e.count})`).join(", ");
+    add(`Review Sources: ${sourceSummary}`);
+    add("");
+
+    // Group by polarity
+    const positiveClusters = sa.clusters.filter(c =>
+      c.signals.some(s => s.polarity === "positive")
+    );
+    const negativeClusters = sa.clusters.filter(c =>
+      c.signals.some(s => s.polarity === "negative" || s.polarity === "mixed")
+    );
+
+    if (positiveClusters.length > 0) {
+      add(`### Positive Themes`);
+      for (const cluster of positiveClusters.slice(0, 3)) {
+        addBullet(cluster.summary, 200);
+      }
       add("");
     }
-    if (sentiment.negatives.length > 0) {
-      add(`**Negative Patterns:**`);
-      for (const n of sentiment.negatives) addBullet(n);
+
+    if (negativeClusters.length > 0) {
+      add(`### Negative Themes`);
+      for (const cluster of negativeClusters.slice(0, 4)) {
+        addBullet(cluster.summary, 200);
+      }
+    }
+
+    // Gaps (only if relevant and few)
+    if (sa.gaps.length > 0 && sa.gaps.length < 4) {
+      add("");
+      add(`*Coverage Gaps: ${sa.gaps.slice(0, 3).map(g => g.replace(/_/g, " ")).join(", ")}*`);
     }
   } else {
-    add("*No specific customer sentiment signals identified from current market data.*");
+    // Legacy sentiment fallback
+    const legacySentiment = AE_BATTLECARD.customer_sentiment;
+    if (legacySentiment && (legacySentiment.positives.length > 0 || legacySentiment.negatives.length > 0)) {
+      if (legacySentiment.positives.length > 0) {
+        add(`**Positive Patterns:**`);
+        for (const p of legacySentiment.positives) addBullet(p);
+        add("");
+      }
+      if (legacySentiment.negatives.length > 0) {
+        add(`**Negative Patterns:**`);
+        for (const n of legacySentiment.negatives) addBullet(n);
+      }
+    } else {
+      add("*No reliable sentiment consensus identified from current market data.*");
+    }
   }
 
   // 8. Strategic Risks

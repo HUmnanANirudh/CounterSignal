@@ -101,7 +101,7 @@ export function classifySignalType(text: string, normalizedType?: string): Norma
   if (negative !== "general") return negative;
 
   const lower = text.toLowerCase();
-  if (/high.*fee|expensive|overpriced|hidden.*cost|pricing.*issue/i.test(lower)) return "pricing_complaint";
+  if (/\b(high.*fee|expensive|overpriced|hidden.*cost|pricing.*issue)\b/i.test(lower) && !/\b(profitable|quarter|result|revenue)\b/i.test(lower)) return "pricing_complaint";
   if (/support.*delay|poor.*support|unresponsive/i.test(lower)) return "support_issue";
   if (/integration.*complex|difficult.*integration|api.*issue/i.test(lower)) return "integration_complexity";
   if (/slow.*onboard|onboard.*delay/i.test(lower)) return "onboarding_delay";

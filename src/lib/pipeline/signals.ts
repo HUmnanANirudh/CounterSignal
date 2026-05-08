@@ -10,7 +10,7 @@ import {
   classifyNegativeSignal,
   classifySeverity,
 } from "./utils/signal-classify";
-
+import { cleanPipelineText } from "./utils/text-cleaner";
 
 export function resolveContradictions(signals: Signal[]): Signal[] {
   if (signals.length <= 1) return signals;
@@ -59,21 +59,6 @@ export function resolveContradictions(signals: Signal[]): Signal[] {
   return resolved;
 }
 
-function isMaterialSignal(text: string): boolean {
-  const lower = text.toLowerCase();
-  
-  // Rule: Reject generic fluff
-  if (/major\s*player|leading\s*platform|comprehensive\s*solution|fast\s*growing/i.test(lower) && lower.length < 60) {
-    return false;
-  }
-
-  const containsStrategicImplication = /\b(valuation|funding|pivot|exit|acquisition|market\s*share|displace|revenue|growth\s*focus|merger)\b/i.test(lower);
-  const containsOperationalRisk = /\b(fraud|outage|delay|failed|compliance|rbi|security|penalty|violation|reliability|risk|custody|license)\b/i.test(lower);
-  const containsBuyerImpact = /\b(fee|cost|support|activation|wait|complex|pricing|mdr|markup|transparent|opaque)\b/i.test(lower);
-  
-  return containsStrategicImplication || containsOperationalRisk || containsBuyerImpact;
-}
-
 export function deriveSignals(
   preprocessed: PreprocessedData,
   citations: Citation[]
@@ -108,60 +93,39 @@ export function deriveSignals(
     }
   };
 
-  for (const candidate of preprocessed.pricing_candidates.slice(0, 6)) {
-    if (!isMaterialSignal(candidate)) continue;
-    const normalizedType = normalizeSignal(candidate);
-    const matchingCitations = citations.filter((c) =>
-      preprocessed.raw_content.includes(c.title.slice(0, 20))
-    );
-    for (const citation of matchingCitations) {
-      addSignalAppearance(normalizedType, candidate, citation);
-    }
-  }
+  // Process candidates using unified cleaner
+  const processGroup = (candidates: string[], type?: string) => {
+    for (const text of candidates) {
+      const cleaned = cleanPipelineText(text, { minWords: 5 });
+      if (!cleaned) continue;
 
-  for (const complaint of preprocessed.complaint_sentences.slice(0, 8)) {
-    if (!isMaterialSignal(complaint)) continue;
-    const normalizedType = normalizeSignal(complaint);
-    const matchingCitations = citations.filter((c) =>
-      preprocessed.raw_content.includes(c.title.slice(0, 20))
-    );
-    for (const citation of matchingCitations) {
-      addSignalAppearance(normalizedType, complaint, citation);
+      const normalizedType = type || normalizeSignal(cleaned);
+      const matchingCitations = citations.filter((c) =>
+        preprocessed.raw_content.includes(c.title.slice(0, 20))
+      );
+      for (const citation of matchingCitations) {
+        addSignalAppearance(normalizedType, cleaned, citation);
+      }
     }
-  }
+  };
 
-  for (const review of preprocessed.review_blocks.slice(0, 5)) {
-    if (!isMaterialSignal(review)) continue;
-    const normalizedType = "positive";
-    const matchingCitations = citations.filter((c) =>
-      preprocessed.raw_content.includes(c.title.slice(0, 20))
-    );
-    for (const citation of matchingCitations) {
-      addSignalAppearance(normalizedType, review, citation);
-    }
-  }
-
-  for (const feature of preprocessed.feature_mentions.slice(0, 4)) {
-    if (!isMaterialSignal(feature)) continue;
-    const normalizedType = "feature";
-    const matchingCitations = citations.filter((c) =>
-      preprocessed.raw_content.includes(c.title.slice(0, 20))
-    );
-    for (const citation of matchingCitations) {
-      addSignalAppearance(normalizedType, feature, citation);
-    }
-  }
+  processGroup(preprocessed.pricing_candidates.slice(0, 6));
+  processGroup(preprocessed.complaint_sentences.slice(0, 8));
+  processGroup(preprocessed.review_blocks.slice(0, 5), "positive");
+  processGroup(preprocessed.feature_mentions.slice(0, 4), "feature");
 
   if (preprocessed.negative_signals) {
     for (const negSignal of preprocessed.negative_signals.slice(0, 6)) {
-      if (!isMaterialSignal(negSignal.text)) continue;
-      const normalizedType = classifyNegativeSignal(negSignal.text);
+      const cleaned = cleanPipelineText(negSignal.text, { minWords: 5 });
+      if (!cleaned) continue;
+
+      const normalizedType = classifyNegativeSignal(cleaned);
       const severity = classifySeverity(normalizedType);
       const matchingCitations = citations.filter((c) =>
         preprocessed.raw_content.includes(c.title.slice(0, 20))
       );
       for (const citation of matchingCitations) {
-        addSignalAppearance(normalizedType, negSignal.text, citation, severity);
+        addSignalAppearance(normalizedType, cleaned, citation, severity);
       }
     }
   }
@@ -183,41 +147,15 @@ export function deriveSignals(
       qualityDomains.some(q => d.includes(q))
     );
 
-    // Acceptance logic:
-    // 1. High severity always accepted
-    // 2. Cross-type validated always accepted
-    // 3. Feature signals always accepted
-    // 4. Single strong source (2+ citations, same domain) accepted
-    // 5. Low data mode (<= 10 citations): accept single source from quality domains
-    // 6. Low data mode: accept any single source signal if it has 1+ citations
-
     let accepted = false;
 
     if (hasCrossTypeAgreement || isFeature || isHighSeverity || hasSingleStrongSource) {
       accepted = true;
     } else if (isLowDataMode && hasWeakSingleSource) {
-      if (isFromQualityDomain) {
-        console.log(`[Signals] Low-data mode: accepting quality-domain signal: ${key.slice(0, 40)}...`);
-        accepted = true;
-      } else {
-        // Low data mode: accept any signal with at least 1 citation from low-coverage entity
-        console.log(`[Signals] Low-data mode: accepting single-source signal: ${key.slice(0, 40)}...`);
-        accepted = true;
-      }
+      accepted = true;
     }
 
-    if (!accepted) {
-      console.log(`[Signals] Filtering: ${key.slice(0, 40)}... (types: ${uniqueTypes.join(",")}, citations: ${appearance.citationIds.length})`);
-      continue;
-    }
-
-    if (isHighSeverity) {
-      console.log(`[Signals] HIGH severity signal auto-validated: ${appearance.normalizedType} - ${key.slice(0, 40)}...`);
-    } else if (hasSingleStrongSource) {
-      console.log(`[Signals] Single strong source signal accepted: ${key.slice(0, 40)}... (${appearance.citationIds.length} citations)`);
-    } else if (isLowDataMode) {
-      console.log(`[Signals] Low-data mode signal accepted: ${key.slice(0, 40)}...`);
-    }
+    if (!accepted) continue;
 
     const id = `signal_${signalIndex++}`;
     const citationIds = appearance.citationIds.slice(0, 3);
@@ -241,8 +179,6 @@ export function deriveSignals(
   }
 
   const resolvedSignals = resolveContradictions(signals);
-  console.log(`[Signals] Derived ${signals.length} validated signals, resolved to ${resolvedSignals.length}`);
-
   return { signals: resolvedSignals, sourceMap };
 }
 
@@ -288,7 +224,6 @@ export function calculateConfidence(
   factors.push(`Source Reliability (${Math.round(evidenceScore * 100)}%)`);
 
   // 3. CAPABILITY SCORE (Feature/overlap accuracy)
-  // Refined Formula: capability_accuracy = evidence_coverage × capability_specificity × direct_source_support
   const evidence_coverage = Math.min(signals.length / 10, 1);
   const capability_specificity = extractionQuality;
   const direct_source_support = Math.min(uniqueDomains / 5, 1);
@@ -297,7 +232,6 @@ export function calculateConfidence(
   factors.push(`Capability Accuracy (${Math.round(capabilityScore * 100)}%)`);
 
   // 4. STRATEGIC SCORE (GTM reasoning/implication accuracy)
-  // Higher when extraction is high quality and we have diverse evidence
   const strategicScore = (extractionQuality * 0.4 + evidenceScore * 0.4 + capabilityScore * 0.2);
   factors.push(`Strategic Depth (${Math.round(strategicScore * 100)}%)`);
 
@@ -318,8 +252,6 @@ export function calculateConfidence(
   if (signals.length < 5) overallScore *= 0.8;
   if (uniqueDomains < 3) overallScore *= 0.9;
   if (dataGaps.length > 2) overallScore *= 0.85;
-
-  console.log(`[Confidence] Multi-factor: E:${Math.round(entityScore * 100)}%, S:${Math.round(strategicScore * 100)}%, C:${Math.round(capabilityScore * 100)}%`);
 
   return { 
     entityScore: Math.round(entityScore * 100) / 100,

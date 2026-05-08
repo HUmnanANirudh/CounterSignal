@@ -22,6 +22,12 @@ import {
 } from "./context-builders";
 import { getCategoryStrategy } from "./category-strategies";
 import { getRelationshipMode, getStackPosition } from "@/types/entity";
+import {
+  extractSentimentSignals,
+  buildSentimentAnalysis,
+  extractPricingEvidence,
+  clusterFinancialEvents,
+} from "./sentiment";
 
 export type { PipelineStage } from "@/types";
 
@@ -39,7 +45,7 @@ function setCache(competitor: string, battlecard: Battlecard): void {
   cache.set(competitor, { battlecard, timestamp: Date.now() });
 }
 
-function filterRecentMoves(moves: Array<{ name: string; date: string }>): Array<{ name: string; date: string; impact: "high" | "medium" | "low" }> {
+function filterRecentMoves(moves: Array<{ name: string; date: string; type?: string }>): Array<{ name: string; date: string; type: import("@/types/battlecard").EventType; impact: "high" | "medium" | "low" }> {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - PIPELINE_CONFIG.recentDays);
 
@@ -53,7 +59,12 @@ function filterRecentMoves(moves: Array<{ name: string; date: string }>): Array<
       }
     })
     .slice(0, 5)
-    .map((move) => ({ ...move, impact: "medium" as const }));
+    .map((move) => ({
+      name: move.name,
+      date: move.date,
+      type: (move.type ?? "product_launch") as import("@/types/battlecard").EventType,
+      impact: "medium" as const,
+    }));
 }
 
 export async function runPipeline(
@@ -120,11 +131,24 @@ export async function runPipeline(
     }
 
     // RELEVANCE GATE
-    const isRelevant = classification.confidence > 0.15 || classification.signals.length > 0;
-    if (!isRelevant) {
-      console.warn(`[Pipeline] RELEVANCE GATE: ${competitor} does not appear to be a BFSI entity (Confidence: ${classification.confidence})`);
+    // Use marketRole directly — non_competitor and partner categories should NOT generate displacement cards
+    const isBFSICompetitor = classification.marketRole === "direct_competitor" || classification.marketRole === "indirect_competitor";
+
+    if (!isBFSICompetitor) {
+      console.warn(`[Pipeline] RELEVANCE GATE: ${competitor} is ${classification.marketRole} (${classification.category}) — not a Blostem competitor`);
       const relevanceCard = buildRelevanceAssessmentBattlecard(competitor, classification);
       setCache(competitor, relevanceCard);
+
+      // Also cache under any aliases to prevent duplicate runs
+      const normalized = resolveEntity(competitor);
+      if (normalized.resolved?.aliases) {
+        for (const alias of normalized.resolved.aliases) {
+          if (alias !== competitor.toLowerCase() && alias.length >= 3) {
+            setCache(alias, relevanceCard);
+          }
+        }
+      }
+
       callbacks.onChunk(renderRelevanceAssessmentMarkdown(relevanceCard));
       callbacks.onComplete(relevanceCard);
       return;
@@ -150,6 +174,17 @@ export async function runPipeline(
       strategicCard.relationshipMode = getRelationshipMode(classification.category);
       strategicCard.stackPosition = getStackPosition(classification.category);
       setCache(competitor, strategicCard);
+
+      // Also cache under aliases to prevent duplicate generation
+      const normalized = resolveEntity(competitor);
+      if (normalized.resolved?.aliases) {
+        for (const alias of normalized.resolved.aliases) {
+          if (alias !== competitor.toLowerCase() && alias.length >= 3) {
+            setCache(alias, strategicCard);
+          }
+        }
+      }
+
       callbacks.onChunk(renderMarkdown(strategicCard));
       callbacks.onComplete(strategicCard);
       return;
@@ -170,6 +205,46 @@ export async function runPipeline(
 
     callbacks.onStageChange("deriving", "Deriving signals and citation mapping...");
     const { signals: rawSignals, sourceMap } = deriveSignals(preprocessed, citations);
+
+    // Step 2: Extract structured sentiment signals (customer voice only)
+    callbacks.onStageChange("sentiment", "Extracting customer sentiment from verified sources...");
+    const sentimentSignals = extractSentimentSignals(rawContent, citations);
+    const sentiment_analysis = buildSentimentAnalysis(sentimentSignals);
+
+    // Step 3: Extract pricing evidence (company-specific, not generic)
+    const pricing_evidence = extractPricingEvidence(preprocessed.pricing_candidates, citations);
+
+    // Step 4: Cluster financial events (deduplicate regulatory events)
+    // Map extracted recent_moves to FinancialEvent with proper event family grouping
+    const eventTypeToFamily: Record<string, string> = {
+      LICENSE_ACTION: "Regulatory",
+      REGULATORY_ENFORCEMENT: "Regulatory",
+      STRATEGIC_RESTRUCTURE: "Strategic",
+      FUNDING: "Funding",
+      PRODUCT_LAUNCH: "Product",
+      MARKET_EXPANSION: "Market",
+      financial_result: "Financial Results",
+      operational_incident: "Operational",
+      leadership_change: "Leadership",
+      compliance_event: "Compliance",
+      unknown: "General",
+    };
+
+    const financialEvents = (extracted.recent_moves ?? []).map((m, i) => {
+      const eventType = m.type as import("@/types/sentiment").FinancialEvent["type"];
+      return {
+        id: `event_${i}`,
+        type: eventType,
+        eventFamily: eventTypeToFamily[eventType] ?? "Strategic",
+        date: m.date,
+        headline: m.name,
+        implications: m.strategic_relevance ? [m.strategic_relevance] : [],
+        sources: [],
+        confidence: "MEDIUM" as const,
+        citationIds: [],
+      };
+    });
+    const event_clusters = financialEvents.length > 0 ? clusterFinancialEvents(financialEvents) : [];
 
     callbacks.onStageChange("normalizing", "Normalizing and summarizing signals...");
     const signals = await normalizeSignals(rawSignals);
@@ -253,6 +328,10 @@ export async function runPipeline(
       citations: citations.slice(0, 6),
       confidence,
       dataGaps,
+      // New structured fields (Steps 2-4)
+      sentiment_analysis,
+      pricing_evidence,
+      event_clusters,
     };
 
     setCache(competitor, battlecard);

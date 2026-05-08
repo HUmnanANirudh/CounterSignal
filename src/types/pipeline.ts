@@ -10,7 +10,7 @@ export interface PipelineConfig {
 }
 
 export const PIPELINE_CONFIG: PipelineConfig = {
-  minDocuments: 5,
+  minDocuments: 3,
   minDomains: 2,
   recentDays: 180,
   cacheTTL: 24 * 60 * 60 * 1000,
@@ -102,6 +102,7 @@ export type PipelineStage =
   | "preprocessing"
   | "extracting"
   | "deriving"
+  | "sentiment"
   | "normalizing"
   | "primitives"
   | "vars"
