@@ -264,6 +264,7 @@ async function secondarySearch(competitor: string): Promise<{ answers: string[];
 
 export async function search(competitor: string): Promise<SearchResult> {
   if (!TAVILY_API_KEY) {
+    console.error("[Search] TAVILY_API_KEY is not configured in the environment.");
     throw new Error("TAVILY_API_KEY not configured");
   }
 
