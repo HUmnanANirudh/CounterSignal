@@ -1,56 +1,126 @@
-# CounterSignal: Analyst-Grade GTM Intelligence Pipeline
+# CounterSignal
+Real-time Competitive Sales Engine for BFSI AEs
 
-CounterSignal is a specialized intelligence engine designed for the Banking, Financial Services, and Insurance (BFSI) sector. It automates the transformation of unstructured web data into executive-grade competitive battlecards, specifically optimized for Account Executives (AEs) and GTM Strategy teams.
+## The Problem
 
-## Overview
+Fintech sales teams spend 10+ hours a week researching competitors before high-stakes deals. In a market with 400+ startups and rising customer acquisition costs, a single well-timed counter on regulatory risk or architectural lag can save a multi-crore deal.
 
-**Problem**: 
-Fintech AEs and GTM leads spend dozens of hours manually researching competitors before high-stakes enterprise deals, yet they still struggle with "RAG noise"—a flood of raw search results that lacks strategic synthesis. In the fast-moving Indian BFSI sector, missing a critical regulatory shift or misinterpreting a competitor's architectural lock-in isn't just a research failure; it's a lost multi-crore deal. The problem is a "Signal-to-Insight" gap: there is too much raw web data and too little actionable intelligence tailored for the specific person sitting across from a bank's CTO.
+They already have search engines. They can find a competitor's website.
 
-**Solution**: 
-I built CounterSignal, a specialized intelligence engine that automates the research lifecycle to produce operator-ready battlecards in under 15 seconds. It doesn't just fetch data; it models strategic implications through a 6-stage pipeline that resolves entities against a 30+ category BFSI taxonomy. The system outputs a structured 1-page report featuring synthesized customer sentiment, pricing posture, and a persona-specific "VARS" framework (Validate-Acknowledge-Reframe-Specify) that provides AEs with a tactical pivot for every competitive situation.
+What they lack is a system that filters through the noise of PR content and SEO spam to find specific operational risks and pricing signals.
 
-**Approach**: 
-My approach prioritizes "Strategic Modeling" over generic retrieval. I rejected standard RAG architectures that pass noisy web text directly to an LLM, as they consistently produce "AI-isms" and irrelevant trivia. Instead, I built a deterministic Materiality Gate and an Entity Relevance Gate to reject 90% of search noise before it reaches the reasoning layer. I considered using static templates for sentiment but rejected them in favor of dynamic LLM synthesis, ensuring that every battlecard reflects the unique operational reality and specific "Customer Voice" of the competitor being researched.
+---
 
-**What's Next**: 
-If given another month, the priority would be integrating internal "Win/Loss" deal logs to create a closed-loop intelligence system. While external web data provides the "Market View," internal historical data reveals the "Blostem Reality"—why we actually win or lose against specific rivals. Mapping external strategic moves against our internal deal success rates would allow the engine to weight its "Reframe" logic with historical evidence, transforming CounterSignal from a research tool into a predictive GTM advisor.
+## What I Built
 
-## Pipeline Architecture
+A research pipeline that converts raw web data into a 1-page tactical battlecard for Account Executives.
 
-The CounterSignal pipeline operates through six distinct stages of intelligence processing:
+**Input**: Competitor name (e.g., "Paytm", "Cashfree")
 
-### 1. Ontological Resolution and Taxonomy Mapping
-The engine begins by resolving the target entity against a 10-layer BFSI taxonomy containing 30+ specialized categories (e.g., Core Banking, Payment Orchestration, Card Issuance). This stage determines the competitive relationship (Direct Competitor, Supply-Side Partner, or Internal Profile) and sets the strategic baseline for downstream extraction.
+**Output**: A structured battlecard featuring **Stack Positioning**, synthesized pricing, **Persona-based Objections**, and **Confidence Metrics**.
 
-### 2. Tiered Research and Source Weighting
-The system executes multi-source retrieval using the Tavily search engine. To ensure analyst-grade fidelity, it applies a Domain Authority Map that weights specialized Indian tech and finance publications (e.g., The Ken, Medianama, Entrackr) higher than generic news aggregators.
+https://github.com/user-attachments/assets/cb5c46aa-59c0-44a7-8808-504310a778ca
 
-### 3. Materiality and Relevance Gating
-To prevent hallucination and noise contamination, data passes through a dual-stage gate:
-- **Structural Materiality**: A deterministic cleaner rejects ~90% of raw web data (CSS fragments, PR fluff, and tracking artifacts).
-- **Entity Relevance Gate**: An extraction validator rejects any signal that is not explicitly linked to the target entity or contextually bound to a verified source block, preventing "trivia leakage."
+---
 
-### 4. Dynamic Sentiment and Event Clustering
-Instead of using static templates, the engine performs real-time synthesis:
-- **Customer Sentiment**: Individual signals from Reddit, G2, and news sources are clustered by topic and polarity. A dynamic synthesis layer generates unique, data-driven theme summaries for each entity.
-- **Financial Events**: Regulatory actions, funding rounds, and product launches are semantically deduplicated across multiple sources to create a unified strategic timeline.
+## Why CounterSignal?
 
-### 5. Strategic Synthesis (VARS Framework)
-The extraction layer uses the VARS framework to convert technical features into displacement vectors:
-- **Validate**: Establish the competitor's current market stance.
-- **Acknowledge**: Identify core strengths to build credibility.
-- **Reframe**: Pivot to an architectural or operational gap.
-- **Specify**: Present the specific infrastructure solution to address the gap.
+- **Noise Filtering**: Strips noise (tracking pixels, PR fluff) and unrelated search fragments to ensure high-signal LLM synthesis.
+- **Category Aware**: Uses a 10-layer BFSI taxonomy to distinguish between a Payment Gateway and a Core Banking provider.
+- **Evidence Based**: Low-confidence sections are explicitly flagged when source coverage is weak.
+- **Tactical Focus**: Generates specific objection-handling points for CTOs, Founders, and Compliance stakeholders.
+**Target users**: Account Executives, GTM leads, and Sales Engineers.
+**Market context**: ndian fintech is crowded and fast-moving. Sales teams often compete against multiple infrastructure vendors in the same deal cycle, making fast and accurate competitor research increasingly important.
 
-### 6. Truth Calibration and Analyst Sanitization
-A final post-processing layer ensures field-readiness:
-- **Confidence Scoring**: Dynamically calculates scores for Entity Certainty and Strategic Depth.
-- **AE Sanitization**: Enforces strict brevity constraints and removes "AI-isms" to ensure content is usable in live sales environments.
+---
 
-## Technical Specifications
+## Architecture
 
-- **AI Engine**: Gemini model via Vercel AI SDK.
-- **Language**: TypeScript with Next.js 15 (App Router).
-- **Ontology**: Centralized BFSI classification system (entity.ts).
-- **Filtering**: Custom materiality engine (text-cleaner.ts) and relevance validator.
+| Stage | Description |
+|------|------------|
+| Entity Resolution | Maps competitor nicknames to canonical names (e.g. "One97" -> "Paytm") |
+| Tiered Research | Prioritizes specialized journals (The Ken, Medianama) over general news |
+| Content Filtering | Deterministic engine strips structural noise and SEO artifacts |
+| Classification | Maps the entity to a 30+ category BFSI taxonomy (e.g. Core Banking Ledger, Card Issuance). This identifies the competitor's **Stack Position**, which dynamically adjusts the battlecard's intelligence focus. |
+| Extraction | Pulls pricing, positioning, and operational signals |
+| Sentiment Clustering | Groups user feedback into patterns (e.g. "API Latency", "Settlement Lag") |
+| GTM Synthesis | Converts signals into objection-handling points (Validate, Acknowledge, Reframe) |
+
+---
+
+## Technical Stack
+
+- **Framework**: Next.js 15 + TypeScript
+- **AI**: Google Gemini via @ai-sdk/google
+- **Search**: Tavily Search Engine
+- **UI**: shadcn/ui + Tailwind CSS
+- **Sanitization**: Multi-stage noise rejection combining regex, semantic similarity gates, and domain authority weighting
+
+---
+
+## How It Works
+
+1. **Search**: Executes 6+ parallel search queries using **Google Dorking** patterns (e.g. `site:domain "pricing"`, `intext:competitor "regulatory"`) to surface non-obvious operational data and industry-specific filings.
+2. **Filter**: Removes content that doesn't substantively mention the entity.
+3. **Classify**: Maps the entity to a 30+ category BFSI taxonomy. Identifies the competitor's **Stack Position**.
+4. **Extract**: Pulls pricing, recent launches, and customer complaints.
+5. **Cluster**: Groups feedback signals into 2-3 recurring themes.
+6. **Pivot**: Generates stakeholder-specific counters for the sales team.
+
+---
+
+## Key Components
+
+### Noise Filter
+
+A deterministic stage that ensures only relevant signals reach the LLM. It rejects anything that isn't a buyer-impacting or strategically relevant snippet.
+
+### Category-Aware Rendering
+
+The battlecard is not a static template. The system dynamically reconfigures the report based on the entity's identified role:
+- **Relationship Modes**: Switches between Competitive Pivot (for rivals), Integration Posture (for partners), and Reference Mode (for internal profiles).
+- **Stack-Specific Analysis**: Lenders receive interest rate spread analysis, while Gateways receive settlement latency benchmarks.
+- **Self-Awareness**: Recognizes Blostem's own profile to prevent redundant competitive analysis.
+
+---
+
+## Operator Experience
+
+The interface is built for rapid analyst refinement:
+
+- **Live Edit & Preview**: A dual-pane editor (TipTap-powered) allows AEs to refine AI-generated pivots while maintaining real-time Markdown-to-UI synchronization.
+- **Confidence Metrics**: Every report includes a **Confidence Score** (0-1.0) derived from source density, domain authority, and entity-mention substance.
+- **One-Click PDF Export**: Generates PDFs with full source citations for offline use or executive briefings.
+
+## Data Flow
+
+```
+Input Name → Entity Resolution → Weighted Search
+→ Noise Filter → BFSI Classification
+→ Signal Extraction → Sentiment Clustering
+→ GTM Synthesis → Final Battlecard
+```
+---
+
+## Limitations & Roadmap
+
+### Current Limitation
+
+The search and synthesis process currently runs sequentially. This introduces:
+
+- **Niche Entities**: Startups with < 1 year of public web presence often return low-confidence results due to strict entity-grounding rules.
+- **Hybrid Conglomerates**: Large entities (e.g. Tata, Reliance) that span multiple sectors can occasionally trigger classification "smearing" across categories.
+
+
+### In Progress: Parallel Batching
+
+Migrating to a parallel architecture to reduce latency and improve reliability:
+
+- **Concurrent Extraction**: Offload sentiment and pricing extraction to background tasks.
+- **Streaming Citations**: Users will see source links while the report is still generating.
+
+### Future Work
+
+- **White-labeling**: Allowing any organization to define themselves as the 'host' to generate pivots against their own category strengths.
+- **CRM Integration**: Automatically triggering research when a competitor is mentioned in a deal record.
+- **Real-time Alerts**: Pushing high-impact events (e.g. regulatory actions or product pivots) directly to Slack/Teams for immediate field readiness.
