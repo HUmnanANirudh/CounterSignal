@@ -98,6 +98,19 @@ export async function runPipeline(
   const dataGaps: string[] = [];
 
   try {
+    // Helper to cache battlecard for all aliases
+    const cacheWithAliases = (card: Battlecard) => {
+      setCache(competitor, card);
+      const normalized = resolveEntity(competitor);
+      if (normalized.resolved?.aliases) {
+        for (const alias of normalized.resolved.aliases) {
+          if (alias !== competitor.toLowerCase() && alias.length >= 3) {
+            setCache(alias, card);
+          }
+        }
+      }
+    };
+
     callbacks.onStageChange("searching", `Researching ${competitor}...`);
     const searchResult = await search(competitor);
     const { citations, rawContent, debugInfo } = searchResult;
@@ -145,18 +158,6 @@ export async function runPipeline(
       return;
     }
 
-    // Helper to cache battlecard for all aliases
-    const cacheWithAliases = (card: Battlecard) => {
-      setCache(competitor, card);
-      const normalized = resolveEntity(competitor);
-      if (normalized.resolved?.aliases) {
-        for (const alias of normalized.resolved.aliases) {
-          if (alias !== competitor.toLowerCase() && alias.length >= 3) {
-            setCache(alias, card);
-          }
-        }
-      }
-    };
 
     // RELEVANCE GATE
     const isRelevant = classification.category !== "non_bfsi";
@@ -311,9 +312,10 @@ export async function runPipeline(
       event_clusters,
     };
 
-    setCache(competitor, battlecard);
+    cacheWithAliases(battlecard);
     const markdown = renderMarkdown(battlecard);
     callbacks.onChunk(markdown);
+    callbacks.onComplete(battlecard);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[Pipeline] Pipeline error for ${competitor}: ${errorMessage}`);
